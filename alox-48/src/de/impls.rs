@@ -38,7 +38,7 @@ where
 
 struct IntVisitor;
 
-impl<'de> Visitor<'de> for IntVisitor {
+impl Visitor<'_> for IntVisitor {
     type Value = i32;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -70,7 +70,7 @@ macro_rules! primitive_int_impl {
 
 struct NonZeroIntVisitor;
 
-impl<'de> Visitor<'de> for NonZeroIntVisitor {
+impl Visitor<'_> for NonZeroIntVisitor {
     type Value = std::num::NonZeroI32;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -123,7 +123,7 @@ nonzero_int_impl!(
 
 struct UnitVisitor;
 
-impl<'de> Visitor<'de> for UnitVisitor {
+impl Visitor<'_> for UnitVisitor {
     type Value = ();
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -146,7 +146,7 @@ impl<'de> Deserialize<'de> for () {
 
 struct BoolVisitor;
 
-impl<'de> Visitor<'de> for BoolVisitor {
+impl Visitor<'_> for BoolVisitor {
     type Value = bool;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -169,7 +169,7 @@ impl<'de> Deserialize<'de> for bool {
 
 struct FloatVisitor;
 
-impl<'de> Visitor<'de> for FloatVisitor {
+impl Visitor<'_> for FloatVisitor {
     type Value = f64;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

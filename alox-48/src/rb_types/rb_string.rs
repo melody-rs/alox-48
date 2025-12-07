@@ -115,20 +115,6 @@ impl From<Vec<u8>> for RbString {
 
 struct StringVisitor;
 
-struct BytesVisitor;
-
-impl<'de> Visitor<'de> for BytesVisitor {
-    type Value = &'de [u8];
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("a ruby string")
-    }
-
-    fn visit_string(self, string: &'de [u8]) -> DeResult<Self::Value> {
-        Ok(string)
-    }
-}
-
 impl<'de> Visitor<'de> for StringVisitor {
     type Value = RbString;
 

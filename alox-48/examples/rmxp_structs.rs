@@ -90,7 +90,6 @@ impl From<alox_48::Value> for ParameterType {
                                     .into_array()
                                     .unwrap()
                                     .into_iter()
-                                    .map(Into::into)
                                     .collect(),
                             }
                         })
@@ -105,7 +104,6 @@ impl From<alox_48::Value> for ParameterType {
                         .into_array()
                         .unwrap()
                         .into_iter()
-                        .map(Into::into)
                         .collect(),
                 })
             }

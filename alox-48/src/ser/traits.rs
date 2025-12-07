@@ -99,7 +99,7 @@ pub trait Serializer: Sized {
     /// A convenience method for serializing a string.
     fn serialize_rust_string(self, string: &str) -> Result<Self::Ok> {
         struct StringSerialize<'a>(&'a str);
-        impl<'a> Serialize for StringSerialize<'a> {
+        impl Serialize for StringSerialize<'_> {
             fn serialize<S>(&self, serializer: S) -> Result<S::Ok>
             where
                 S: Serializer,

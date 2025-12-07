@@ -342,7 +342,7 @@ nonzero_integers! {
     NonZeroUsize,
 }
 
-impl<T: ?Sized + Copy> Serialize for Cell<T>
+impl<T: Copy> Serialize for Cell<T>
 where
     T: Serialize,
 {

@@ -296,7 +296,7 @@ impl<'de> Deserializer<'de> {
     }
 }
 
-impl<'de, 'a> super::DeserializerTrait<'de> for &'a mut Deserializer<'de> {
+impl<'de> super::DeserializerTrait<'de> for &mut Deserializer<'de> {
     // This is just barely over the limit.
     // It's fine, I swear.
     #[allow(clippy::too_many_lines)]
@@ -604,7 +604,7 @@ impl<'de, 'a> super::InstanceAccess<'de> for &'a mut InstanceAccess<'de, 'a> {
     }
 }
 
-impl<'de, 'a> super::IvarAccess<'de> for IvarAccess<'de, 'a> {
+impl<'de> super::IvarAccess<'de> for IvarAccess<'de, '_> {
     fn next_ivar(&mut self) -> Result<Option<&'de Sym>> {
         if *self.index >= self.len {
             return Ok(None);
@@ -649,7 +649,7 @@ impl<'de, 'a> super::IvarAccess<'de> for IvarAccess<'de, 'a> {
     }
 }
 
-impl<'de, 'a> super::ArrayAccess<'de> for ArrayAccess<'de, 'a> {
+impl<'de> super::ArrayAccess<'de> for ArrayAccess<'de, '_> {
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
     where
         T: DeserializeSeed<'de>,
@@ -671,7 +671,7 @@ impl<'de, 'a> super::ArrayAccess<'de> for ArrayAccess<'de, 'a> {
     }
 }
 
-impl<'de, 'a> super::HashAccess<'de> for HashAccess<'de, 'a> {
+impl<'de> super::HashAccess<'de> for HashAccess<'de, '_> {
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
     where
         K: DeserializeSeed<'de>,

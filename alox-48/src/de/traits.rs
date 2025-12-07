@@ -428,7 +428,7 @@ pub trait ArrayAccess<'de> {
     }
 }
 
-impl<'de, 'a, A> IvarAccess<'de> for &'a mut A
+impl<'de, A> IvarAccess<'de> for &mut A
 where
     A: IvarAccess<'de>,
 {
@@ -459,7 +459,7 @@ where
     }
 }
 
-impl<'de, 'a, A> HashAccess<'de> for &'a mut A
+impl<'de, A> HashAccess<'de> for &mut A
 where
     A: HashAccess<'de>,
 {
@@ -520,7 +520,7 @@ where
     }
 }
 
-impl<'de, 'a, A> ArrayAccess<'de> for &'a mut A
+impl<'de, A> ArrayAccess<'de> for &mut A
 where
     A: ArrayAccess<'de>,
 {

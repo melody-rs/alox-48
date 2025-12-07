@@ -317,7 +317,7 @@ impl<'a> super::SerializerTrait for &'a mut Serializer {
     }
 }
 
-impl<'a> super::SerializeIvars for SerializeIvars<'a> {
+impl super::SerializeIvars for SerializeIvars<'_> {
     type Ok = ();
 
     fn serialize_field(&mut self, k: &Sym) -> Result<()> {
@@ -369,7 +369,7 @@ impl<'a> super::SerializeIvars for SerializeIvars<'a> {
     }
 }
 
-impl<'a> super::SerializeHash for SerializeHash<'a> {
+impl super::SerializeHash for SerializeHash<'_> {
     type Ok = ();
 
     fn serialize_key<K>(&mut self, k: &K) -> Result<()>
@@ -422,7 +422,7 @@ impl<'a> super::SerializeHash for SerializeHash<'a> {
     }
 }
 
-impl<'a> super::SerializeArray for SerializeArray<'a> {
+impl super::SerializeArray for SerializeArray<'_> {
     type Ok = ();
 
     fn serialize_element<T>(&mut self, v: &T) -> Result<()>

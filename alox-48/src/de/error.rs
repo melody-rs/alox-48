@@ -114,13 +114,13 @@ where
     }
 }
 
-impl<'a> std::fmt::Display for dyn Expected + 'a {
+impl std::fmt::Display for dyn Expected + '_ {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Expected::fmt(self, f)
     }
 }
 
-impl<'a> std::fmt::Display for Unexpected<'a> {
+impl std::fmt::Display for Unexpected<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Unexpected::Nil => f.write_str("nil"),
@@ -175,7 +175,7 @@ impl Error {
         struct OneOf<'a> {
             expected: &'a [&'a Sym],
         }
-        impl<'a> std::fmt::Display for OneOf<'a> {
+        impl std::fmt::Display for OneOf<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self.expected {
                     [] => write!(f, "there should be none"),

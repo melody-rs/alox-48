@@ -37,7 +37,7 @@ where
     }
 }
 
-impl<'de, 'trace, T> DeserializerTrait<'de> for Deserializer<'trace, T>
+impl<'de, T> DeserializerTrait<'de> for Deserializer<'_, T>
 where
     T: DeserializerTrait<'de>,
 {
@@ -72,7 +72,7 @@ where
     }
 }
 
-impl<'de, 'trace, X> Visitor<'de> for Wrapped<'trace, X>
+impl<'de, X> Visitor<'de> for Wrapped<'_, X>
 where
     X: Visitor<'de>,
 {
@@ -266,7 +266,7 @@ where
     }
 }
 
-impl<'de, 'trace, X> VisitorOption<'de> for Wrapped<'trace, X>
+impl<'de, X> VisitorOption<'de> for Wrapped<'_, X>
 where
     X: VisitorOption<'de>,
 {
@@ -285,7 +285,7 @@ where
     }
 }
 
-impl<'de, 'trace, X> VisitorInstance<'de> for Wrapped<'trace, X>
+impl<'de, X> VisitorInstance<'de> for Wrapped<'_, X>
 where
     X: VisitorInstance<'de>,
 {
@@ -340,7 +340,7 @@ struct WrappedIvarAccess<'trace, X> {
     current_field: Option<Symbol>,
 }
 
-impl<'de, 'trace, X> IvarAccess<'de> for WrappedIvarAccess<'trace, X>
+impl<'de, X> IvarAccess<'de> for WrappedIvarAccess<'_, X>
 where
     X: IvarAccess<'de>,
 {
@@ -377,7 +377,7 @@ where
     }
 }
 
-impl<'de, 'trace, X> HashAccess<'de> for Wrapped<'trace, X>
+impl<'de, X> HashAccess<'de> for Wrapped<'_, X>
 where
     X: HashAccess<'de>,
 {
@@ -416,7 +416,7 @@ where
     }
 }
 
-impl<'de, 'trace, X> ArrayAccess<'de> for Wrapped<'trace, X>
+impl<'de, X> ArrayAccess<'de> for Wrapped<'_, X>
 where
     X: ArrayAccess<'de>,
 {
@@ -442,7 +442,7 @@ where
     }
 }
 
-impl<'de, 'trace, X> DeserializeSeed<'de> for Wrapped<'trace, X>
+impl<'de, X> DeserializeSeed<'de> for Wrapped<'_, X>
 where
     X: DeserializeSeed<'de>,
 {

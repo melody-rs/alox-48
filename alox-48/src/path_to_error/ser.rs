@@ -293,7 +293,7 @@ where
     }
 }
 
-impl<'trace, X> SerializeArray for Wrapped<'trace, X>
+impl<X> SerializeArray for Wrapped<'_, X>
 where
     X: SerializeArray,
 {
@@ -323,7 +323,7 @@ where
     }
 }
 
-impl<'trace, X> SerializeHash for Wrapped<'trace, X>
+impl<X> SerializeHash for Wrapped<'_, X>
 where
     X: SerializeHash,
 {
@@ -371,7 +371,7 @@ where
     }
 }
 
-impl<'trace, X> SerializeIvars for WrappedIvars<'trace, X>
+impl<X> SerializeIvars for WrappedIvars<'_, X>
 where
     X: SerializeIvars,
 {
@@ -416,7 +416,7 @@ where
     }
 }
 
-impl<'trace, X> Serialize for WrappedSerialize<'trace, X>
+impl<X> Serialize for WrappedSerialize<'_, X>
 where
     X: Serialize,
 {
