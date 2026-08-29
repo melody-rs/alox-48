@@ -155,9 +155,13 @@ impl<'a> super::SerializerTrait for &'a mut Serializer {
     }
 
     fn serialize_bignum(self, v: num_bigint::BigInt) -> Result<Self::Ok> {
-        if let Ok(v) = <_ as TryInto<i32>>::try_into(v.clone()) {
+        use num_traits::FromPrimitive;
+        if (num_bigint::BigInt::from_i32(-(1 << 30)).unwrap()
+            ..num_bigint::BigInt::from_i32(1 << 30).unwrap())
+            .contains(&v)
+        {
             self.write(Tag::Fixnum);
-            self.write_int(v as i64);
+            self.write_int(v.try_into().unwrap());
         } else {
             self.write(Tag::Bignum);
             let (sign, bytes) = v.to_bytes_le();
