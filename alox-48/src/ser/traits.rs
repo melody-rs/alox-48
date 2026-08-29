@@ -36,7 +36,7 @@ pub trait Serializer: Sized {
     fn serialize_bool(self, v: bool) -> Result<Self::Ok>;
 
     /// Serialize an integer value.
-    fn serialize_i32(self, v: i32) -> Result<Self::Ok>;
+    fn serialize_bignum(self, v: num_bigint::BigInt) -> Result<Self::Ok>;
 
     /// Serialize a float value.
     fn serialize_f64(self, v: f64) -> Result<Self::Ok>;

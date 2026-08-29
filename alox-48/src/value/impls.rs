@@ -169,8 +169,8 @@ impl PartialEq<bool> for Value {
     }
 }
 
-impl PartialEq<i32> for Value {
-    fn eq(&self, other: &i32) -> bool {
+impl PartialEq<num_bigint::BigInt> for Value {
+    fn eq(&self, other: &num_bigint::BigInt) -> bool {
         match self {
             Value::Integer(v) => other == v,
             _ => false,

@@ -312,8 +312,18 @@ impl<'de> super::DeserializerTrait<'de> for &mut Deserializer<'de> {
             Tag::Nil => visitor.visit_nil(),
             Tag::True => visitor.visit_bool(true),
             Tag::False => visitor.visit_bool(false),
-            Tag::Integer => visitor.visit_i32(self.read_packed_int()?),
+            Tag::Fixnum => visitor.visit_bignum(self.read_packed_int()?.into()),
             Tag::Float => visitor.visit_f64(self.read_float()?),
+            Tag::Bignum => {
+                let sign = if self.cursor.next_byte()? == b'-' {
+                    num_bigint::Sign::Minus
+                } else {
+                    num_bigint::Sign::Plus
+                };
+                let len = 2 * self.read_usize()?;
+                let bytes = self.cursor.next_bytes_dyn(len)?;
+                visitor.visit_bignum(num_bigint::BigInt::from_bytes_le(sign, bytes))
+            }
             Tag::String => {
                 let data = self.read_bytes_len()?;
                 visitor.visit_string(data)

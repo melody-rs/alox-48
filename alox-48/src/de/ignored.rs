@@ -25,7 +25,7 @@ impl<'de> Visitor<'de> for IgnoredVisitor {
     fn visit_bool(self, _v: bool) -> Result<Self::Value> {
         Ok(Ignored)
     }
-    fn visit_i32(self, _v: i32) -> Result<Self::Value> {
+    fn visit_bignum(self, _v: num_bigint::BigInt) -> Result<Self::Value> {
         Ok(Ignored)
     }
     fn visit_f64(self, _v: f64) -> Result<Self::Value> {

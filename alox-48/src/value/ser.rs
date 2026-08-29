@@ -18,7 +18,7 @@ impl Serialize for Value {
             Value::Nil => serializer.serialize_nil(),
             Value::Bool(v) => serializer.serialize_bool(*v),
             Value::Float(f) => serializer.serialize_f64(*f),
-            Value::Integer(i) => serializer.serialize_i32(*i),
+            Value::Integer(i) => serializer.serialize_bignum(i.clone()),
             Value::String(s) => s.serialize(serializer),
             Value::Symbol(s) => s.serialize(serializer),
             Value::Array(a) => a.serialize(serializer),
@@ -86,7 +86,7 @@ impl SerializerTrait for Serializer {
         Ok(Value::Bool(v))
     }
 
-    fn serialize_i32(self, v: i32) -> Result<Self::Ok> {
+    fn serialize_bignum(self, v: num_bigint::BigInt) -> Result<Self::Ok> {
         Ok(Value::Integer(v))
     }
 

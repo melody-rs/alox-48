@@ -27,7 +27,7 @@ impl<'de> Visitor<'de> for ValueVisitor {
         Ok(Value::Bool(v))
     }
 
-    fn visit_i32(self, v: i32) -> Result<Self::Value> {
+    fn visit_bignum(self, v: num_bigint::BigInt) -> Result<Self::Value> {
         Ok(Value::Integer(v))
     }
 
@@ -224,7 +224,7 @@ impl<'de> DeserializerTrait<'de> for &'de Value {
             Value::Nil => visitor.visit_nil(),
             Value::Bool(v) => visitor.visit_bool(*v),
             Value::Float(f) => visitor.visit_f64(*f),
-            Value::Integer(i) => visitor.visit_i32(*i),
+            Value::Integer(i) => visitor.visit_bignum(i.clone()),
             Value::String(s) => visitor.visit_string(&s.data),
             Value::Symbol(s) => visitor.visit_symbol(s),
             Value::Array(array) => visitor.visit_array(ValueArrayAccess { array, index: 0 }),

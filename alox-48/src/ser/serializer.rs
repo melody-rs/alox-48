@@ -154,9 +154,24 @@ impl<'a> super::SerializerTrait for &'a mut Serializer {
         Ok(())
     }
 
-    fn serialize_i32(self, v: i32) -> Result<Self::Ok> {
-        self.write(Tag::Integer);
-        self.write_int(v as i64);
+    fn serialize_bignum(self, v: num_bigint::BigInt) -> Result<Self::Ok> {
+        if let Ok(v) = <_ as TryInto<i32>>::try_into(v.clone()) {
+            self.write(Tag::Fixnum);
+            self.write_int(v as i64);
+        } else {
+            self.write(Tag::Bignum);
+            let (sign, bytes) = v.to_bytes_le();
+            self.write(if sign == num_bigint::Sign::Minus {
+                b'-'
+            } else {
+                b'+'
+            });
+            self.write_int(bytes.len().div_ceil(2) as i64);
+            self.write_bytes(&bytes);
+            if bytes.len() % 2 != 0 {
+                self.write(0u8);
+            }
+        }
 
         Ok(())
     }

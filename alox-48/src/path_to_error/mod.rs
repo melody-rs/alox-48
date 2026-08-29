@@ -35,7 +35,7 @@ pub enum Context {
     /// Error occurred while processing a boolean.
     Bool(bool),
     /// Error occurred while processing an integer.
-    Int(i32),
+    Int(num_bigint::BigInt),
     /// Error occurred while processing a float.
     Float(f64),
 

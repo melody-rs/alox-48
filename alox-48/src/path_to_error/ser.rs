@@ -83,9 +83,9 @@ where
         )
     }
 
-    fn serialize_i32(self, v: i32) -> SerResult<Self::Ok> {
+    fn serialize_bignum(self, v: num_bigint::BigInt) -> SerResult<Self::Ok> {
         add_context!(
-            self.serializer.serialize_i32(v),
+            self.serializer.serialize_bignum(v.clone()),
             self.trace.push(Context::Int(v))
         )
     }

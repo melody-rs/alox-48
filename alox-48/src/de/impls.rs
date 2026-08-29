@@ -18,7 +18,7 @@ use std::{
 
 use super::{
     traits::VisitorOption, ArrayAccess, Deserialize, DeserializeSeed, DeserializerTrait, Error,
-    HashAccess, Result, Unexpected, Visitor,
+    HashAccess, Kind, Result, Unexpected, Visitor,
 };
 use crate::Sym;
 
@@ -39,18 +39,21 @@ where
 struct IntVisitor;
 
 impl Visitor<'_> for IntVisitor {
-    type Value = i32;
+    type Value = num_bigint::BigInt;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str("an integer")
     }
 
-    fn visit_i32(self, v: i32) -> Result<Self::Value> {
+    fn visit_bignum(self, v: num_bigint::BigInt) -> Result<Self::Value> {
         Ok(v)
     }
 
     fn visit_f64(self, v: f64) -> Result<Self::Value> {
-        Ok(v as i32)
+        use num_traits::FromPrimitive;
+        num_bigint::BigInt::from_f64(v).ok_or(Error {
+            kind: Kind::InvalidFloatToIntConversion,
+        })
     }
 }
 
@@ -62,7 +65,7 @@ macro_rules! primitive_int_impl {
                 D: DeserializerTrait<'de>,
             {
                 let i = deserializer.deserialize(IntVisitor)?;
-                Ok(i as _)
+                i.try_into().map_err(|_| Error { kind: Kind::NumericOverflow })
             }
         })*
     };
@@ -71,24 +74,44 @@ macro_rules! primitive_int_impl {
 struct NonZeroIntVisitor;
 
 impl Visitor<'_> for NonZeroIntVisitor {
-    type Value = std::num::NonZeroI32;
+    type Value = num_bigint::BigInt;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str("a non-zero integer")
     }
 
-    fn visit_i32(self, v: i32) -> Result<Self::Value> {
-        std::num::NonZeroI32::new(v)
-            .ok_or_else(|| Error::invalid_value(Unexpected::Integer(v), &self))
+    fn visit_bignum(self, v: num_bigint::BigInt) -> Result<Self::Value> {
+        if v == num_bigint::BigInt::ZERO {
+            Err(Error::invalid_value(Unexpected::Integer(&v), &self))
+        } else {
+            Ok(v)
+        }
     }
 
     fn visit_f64(self, v: f64) -> Result<Self::Value> {
-        std::num::NonZeroI32::new(v as i32)
-            .ok_or_else(|| Error::invalid_value(Unexpected::Integer(v as i32), &self))
+        use num_traits::FromPrimitive;
+        self.visit_bignum(num_bigint::BigInt::from_f64(v).ok_or(Error {
+            kind: Kind::InvalidFloatToIntConversion,
+        })?)
     }
 }
 
-primitive_int_impl!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
+primitive_int_impl!(
+    u8,
+    u16,
+    u32,
+    u64,
+    u128,
+    usize,
+    num_bigint::BigUint,
+    i8,
+    i16,
+    i32,
+    i64,
+    i128,
+    isize,
+    num_bigint::BigInt
+);
 
 macro_rules! nonzero_int_impl {
     ($($primitive:ty),*) => {
@@ -97,10 +120,10 @@ macro_rules! nonzero_int_impl {
             where
                 D: DeserializerTrait<'de>,
             {
-                let i = deserializer.deserialize(NonZeroIntVisitor)?.get();
-                // we've already asserted that it's non-zero simply by the fact that NonZeroIntVisitor returns a NonZeroI32.
+                let i = deserializer.deserialize(NonZeroIntVisitor)?;
+                // we've already asserted that it's non-zero simply by the fact that NonZeroIntVisitor returns a nonzero integer.
                 // so this new_unchecked is safe
-                Ok(unsafe { <$primitive>::new_unchecked(i as _) })
+                Ok(unsafe { <$primitive>::new_unchecked(i.try_into().map_err(|_| Error { kind: Kind::NumericOverflow })?) })
             }
         })*
     };
@@ -176,8 +199,11 @@ impl Visitor<'_> for FloatVisitor {
         formatter.write_str("a float")
     }
 
-    fn visit_i32(self, v: i32) -> Result<Self::Value> {
-        Ok(f64::from(v))
+    fn visit_bignum(self, v: num_bigint::BigInt) -> Result<Self::Value> {
+        use num_traits::ToPrimitive;
+        v.to_f64().ok_or(Error {
+            kind: Kind::NumericOverflow,
+        })
     }
 
     fn visit_f64(self, v: f64) -> Result<Self::Value> {

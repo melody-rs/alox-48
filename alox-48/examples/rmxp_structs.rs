@@ -25,7 +25,7 @@ impl Default for Color {
 #[derive(Debug, Deserialize)]
 #[marshal(from = "alox_48::Value")]
 pub enum ParameterType {
-    Integer(i32),
+    Integer(num_bigint::BigInt),
     String(String),
     Color(Color),
     Tone(Tone),
@@ -63,8 +63,15 @@ impl From<alox_48::Value> for ParameterType {
                     volume: obj.fields[symbol!("volume")]
                         .clone()
                         .into_integer()
-                        .unwrap() as _,
-                    pitch: obj.fields[symbol!("pitch")].clone().into_integer().unwrap() as _,
+                        .unwrap()
+                        .try_into()
+                        .unwrap(),
+                    pitch: obj.fields[symbol!("pitch")]
+                        .clone()
+                        .into_integer()
+                        .unwrap()
+                        .try_into()
+                        .unwrap(),
                 })
             }
             Value::Object(obj) if obj.class == "RPG::MoveRoute" => {
@@ -83,8 +90,12 @@ impl From<alox_48::Value> for ParameterType {
                             let obj = obj.into_object().unwrap();
 
                             rpg::MoveCommand {
-                                code: obj.fields[symbol!("code")].clone().into_integer().unwrap()
-                                    as _,
+                                code: obj.fields[symbol!("code")]
+                                    .clone()
+                                    .into_integer()
+                                    .unwrap()
+                                    .try_into()
+                                    .unwrap(),
                                 parameters: obj.fields[symbol!("parameters")]
                                     .clone()
                                     .into_array()
@@ -98,7 +109,12 @@ impl From<alox_48::Value> for ParameterType {
             }
             Value::Object(obj) if obj.class == "RPG::MoveCommand" => {
                 Self::MoveCommand(rpg::MoveCommand {
-                    code: obj.fields[symbol!("code")].clone().into_integer().unwrap() as _,
+                    code: obj.fields[symbol!("code")]
+                        .clone()
+                        .into_integer()
+                        .unwrap()
+                        .try_into()
+                        .unwrap(),
                     parameters: obj.fields[symbol!("parameters")]
                         .clone()
                         .into_array()

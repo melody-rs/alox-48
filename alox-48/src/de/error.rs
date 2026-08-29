@@ -43,6 +43,13 @@ pub enum Kind {
     /// A float's mantissa was too long.
     #[error("Float mantissa too long")]
     ParseFloatMantissaTooLong,
+    /// A float could not be converted to an integer because it was infinite or NaN.
+    #[error("Tried to interpret a nonfinite float as an int")]
+    InvalidFloatToIntConversion,
+    /// An integer could not be read because it does not fit in the range of the requested integer
+    /// or floating point data type
+    #[error("Numeric value is too large")]
+    NumericOverflow,
     /// A symbol was expected (usually for a class name) and something else was found.
     #[error("Expected a symbol got {0:?}")]
     ExpectedSymbol(Tag),
@@ -76,7 +83,7 @@ fn unknown_tag_to_char(tag: u8) -> char {
 pub enum Unexpected<'a> {
     Nil,
     Bool(bool),
-    Integer(i32),
+    Integer(&'a num_bigint::BigInt),
     Float(f64),
     Hash,
     Array,

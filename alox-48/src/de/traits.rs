@@ -68,8 +68,8 @@ pub trait Visitor<'de>: Sized {
         Err(Error::invalid_value(Unexpected::Bool(v), &self))
     }
     /// Input contains an integer value.
-    fn visit_i32(self, v: i32) -> Result<Self::Value> {
-        Err(Error::invalid_value(Unexpected::Integer(v), &self))
+    fn visit_bignum(self, v: num_bigint::BigInt) -> Result<Self::Value> {
+        Err(Error::invalid_value(Unexpected::Integer(&v), &self))
     }
     /// Input contains a float value.
     fn visit_f64(self, v: f64) -> Result<Self::Value> {

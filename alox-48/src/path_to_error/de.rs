@@ -90,8 +90,11 @@ where
         add_context!(self.inner.visit_bool(v), self.trace.push(Context::Bool(v)))
     }
 
-    fn visit_i32(self, v: i32) -> DeResult<Self::Value> {
-        add_context!(self.inner.visit_i32(v), self.trace.push(Context::Int(v)))
+    fn visit_bignum(self, v: num_bigint::BigInt) -> DeResult<Self::Value> {
+        add_context!(
+            self.inner.visit_bignum(v.clone()),
+            self.trace.push(Context::Int(v))
+        )
     }
 
     fn visit_f64(self, v: f64) -> DeResult<Self::Value> {

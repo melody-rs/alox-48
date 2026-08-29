@@ -29,15 +29,27 @@ macro_rules! primitive_int_impl {
             where
                 S: SerializerTrait
             {
-                serializer.serialize_i32(*self as i32)
+                serializer.serialize_bignum(self.clone().into())
             }
         })*
     };
 }
 
 primitive_int_impl! {
-    u8, u16, u32, u64, u128, usize,
-    i8, i16, i32, i64, i128, isize
+    u8,
+    u16,
+    u32,
+    u64,
+    u128,
+    usize,
+    num_bigint::BigUint,
+    i8,
+    i16,
+    i32,
+    i64,
+    i128,
+    isize,
+    num_bigint::BigInt
 }
 
 impl Serialize for f32 {
