@@ -218,14 +218,6 @@ impl num_traits::ToPrimitive for BignumRef<'_> {
     fn to_f64(&self) -> Option<f64> {
         let mantissa_le_bytes =
             &self.le_bytes[self.le_bytes.len().saturating_sub(size_of::<u64>())..];
-        let mut mantissa_first_nonzero_byte_index = 0;
-        for (i, byte) in mantissa_le_bytes.iter().copied().enumerate() {
-            if byte != 0 {
-                mantissa_first_nonzero_byte_index = i;
-                break;
-            }
-        }
-        let mantissa_le_bytes = &mantissa_le_bytes[mantissa_first_nonzero_byte_index..];
         let shift = self.le_bytes.len() - mantissa_le_bytes.len();
         let value_unsigned = if shift > (f64::MAX_EXP / 8).try_into().unwrap() {
             f64::INFINITY
