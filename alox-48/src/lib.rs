@@ -407,11 +407,11 @@ mod bignum {
 
     #[test]
     fn f64_mantissa_overflow() {
-        let int = u64::MAX;
+        let int = u128::MAX;
 
-        let bignum = Bignum::from_u64(int).unwrap();
+        let bignum = Bignum::from_u128(int).unwrap();
 
-        assert_eq!(Some(1.8446744073709552e19), bignum.to_f64());
+        assert_eq!(Some(3.402823669209385e38), bignum.to_f64());
     }
 
     #[test]
