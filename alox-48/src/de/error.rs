@@ -7,7 +7,7 @@
 
 use std::str::Utf8Error;
 
-use crate::{tag::Tag, Sym, Visitor};
+use crate::{tag::Tag, Bignum, BignumRef, Fixnum, Sym, Visitor};
 
 /// Type alias around a result.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -43,6 +43,12 @@ pub enum Kind {
     /// A float's mantissa was too long.
     #[error("Float mantissa too long")]
     ParseFloatMantissaTooLong,
+    /// A fixnum could not be read because it was outside of the interval $[-2^30, 2^30)$.
+    #[error("Failed to parse {0} as a fixnum")]
+    ParseFixnumOverflow(Bignum),
+    /// A bignum could not be read because it was inside of the interval $[-2^30, 2^30)$.
+    #[error("Failed to parse {0} as a bignum")]
+    ParseBignumUnderflow(Fixnum),
     /// A float could not be converted to an integer because it was infinite or NaN.
     #[error("Tried to interpret a nonfinite float as an int")]
     InvalidFloatToIntConversion,
@@ -83,7 +89,8 @@ fn unknown_tag_to_char(tag: u8) -> char {
 pub enum Unexpected<'a> {
     Nil,
     Bool(bool),
-    Integer(&'a num_bigint::BigInt),
+    Fixnum(Fixnum),
+    Bignum(BignumRef<'a>),
     Float(f64),
     Hash,
     Array,
@@ -132,7 +139,8 @@ impl std::fmt::Display for Unexpected<'_> {
         match self {
             Unexpected::Nil => f.write_str("nil"),
             Unexpected::Bool(v) => write!(f, "bool `{v}`"),
-            Unexpected::Integer(v) => write!(f, "integer `{v}`"),
+            Unexpected::Fixnum(v) => write!(f, "fixnum `{v}`"),
+            Unexpected::Bignum(v) => write!(f, "bignum `{v}`"),
             Unexpected::Float(v) => write!(f, "float `{v}`"),
             Unexpected::Hash => write!(f, "hash"),
             Unexpected::Array => write!(f, "array"),

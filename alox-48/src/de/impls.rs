@@ -20,7 +20,7 @@ use super::{
     traits::VisitorOption, ArrayAccess, Deserialize, DeserializeSeed, DeserializerTrait, Error,
     HashAccess, Kind, Result, Unexpected, Visitor,
 };
-use crate::Sym;
+use crate::{Bignum, BignumRef, Fixnum, Sym};
 
 impl<'de, T> DeserializeSeed<'de> for PhantomData<T>
 where
@@ -36,112 +36,141 @@ where
     }
 }
 
-struct IntVisitor;
+struct IntVisitor<'de>(PhantomData<&'de ()>);
 
-impl Visitor<'_> for IntVisitor {
-    type Value = num_bigint::BigInt;
+enum IntVisitorValue<'de> {
+    Fixnum(Fixnum),
+    Bignum(Bignum),
+    BignumRef(BignumRef<'de>),
+}
+
+impl<'de> Visitor<'de> for IntVisitor<'de> {
+    type Value = IntVisitorValue<'de>;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str("an integer")
     }
 
-    fn visit_bignum(self, v: num_bigint::BigInt) -> Result<Self::Value> {
-        Ok(v)
+    fn visit_fixnum(self, v: Fixnum) -> Result<Self::Value> {
+        Ok(IntVisitorValue::Fixnum(v))
+    }
+
+    fn visit_bignum(self, v: BignumRef<'de>) -> Result<Self::Value> {
+        Ok(IntVisitorValue::BignumRef(v))
     }
 
     fn visit_f64(self, v: f64) -> Result<Self::Value> {
-        use num_traits::FromPrimitive;
-        num_bigint::BigInt::from_f64(v).ok_or(Error {
-            kind: Kind::InvalidFloatToIntConversion,
-        })
+        if let Some(fixnum) = num_traits::FromPrimitive::from_f64(v) {
+            self.visit_fixnum(fixnum)
+        } else {
+            Ok(IntVisitorValue::Bignum(
+                num_traits::FromPrimitive::from_f64(v).ok_or(Error {
+                    kind: Kind::InvalidFloatToIntConversion,
+                })?,
+            ))
+        }
     }
 }
 
 macro_rules! primitive_int_impl {
-    ($($primitive:ty),*) => {
+    ($($primitive:ty => $to_primitive:ident),* $(,)?) => {
         $(impl<'de> Deserialize<'de> for $primitive {
             fn deserialize<D>(deserializer: D) -> Result<Self>
             where
                 D: DeserializerTrait<'de>,
             {
-                let i = deserializer.deserialize(IntVisitor)?;
-                i.try_into().map_err(|_| Error { kind: Kind::NumericOverflow })
+                match deserializer.deserialize(IntVisitor(Default::default()))? {
+                    IntVisitorValue::Fixnum(v) => num_traits::ToPrimitive::$to_primitive(&v).ok_or(Error { kind: Kind::NumericOverflow }),
+                    IntVisitorValue::Bignum(v) => num_traits::ToPrimitive::$to_primitive(&v).ok_or(Error { kind: Kind::NumericOverflow }),
+                    IntVisitorValue::BignumRef(v) => num_traits::ToPrimitive::$to_primitive(&v).ok_or(Error { kind: Kind::NumericOverflow }),
+                }
             }
         })*
     };
 }
 
-struct NonZeroIntVisitor;
+struct NonZeroIntVisitor<'de>(PhantomData<&'de ()>);
 
-impl Visitor<'_> for NonZeroIntVisitor {
-    type Value = num_bigint::BigInt;
+impl<'de> Visitor<'de> for NonZeroIntVisitor<'de> {
+    type Value = IntVisitorValue<'de>;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str("a non-zero integer")
     }
 
-    fn visit_bignum(self, v: num_bigint::BigInt) -> Result<Self::Value> {
-        if v == num_bigint::BigInt::ZERO {
-            Err(Error::invalid_value(Unexpected::Integer(&v), &self))
+    fn visit_fixnum(self, v: Fixnum) -> Result<Self::Value> {
+        if v == 0i16.into() {
+            Err(Error::invalid_value(Unexpected::Fixnum(v), &self))
         } else {
-            Ok(v)
+            Ok(IntVisitorValue::Fixnum(v))
         }
     }
 
+    fn visit_bignum(self, v: BignumRef<'de>) -> Result<Self::Value> {
+        Ok(IntVisitorValue::BignumRef(v))
+    }
+
     fn visit_f64(self, v: f64) -> Result<Self::Value> {
-        use num_traits::FromPrimitive;
-        self.visit_bignum(num_bigint::BigInt::from_f64(v).ok_or(Error {
-            kind: Kind::InvalidFloatToIntConversion,
-        })?)
+        if let Some(fixnum) = num_traits::FromPrimitive::from_f64(v) {
+            self.visit_fixnum(fixnum)
+        } else {
+            Ok(IntVisitorValue::Bignum(
+                num_traits::FromPrimitive::from_f64(v).ok_or(Error {
+                    kind: Kind::InvalidFloatToIntConversion,
+                })?,
+            ))
+        }
     }
 }
 
 primitive_int_impl!(
-    u8,
-    u16,
-    u32,
-    u64,
-    u128,
-    usize,
-    num_bigint::BigUint,
-    i8,
-    i16,
-    i32,
-    i64,
-    i128,
-    isize,
-    num_bigint::BigInt
+    u8 => to_u8,
+    u16 => to_u16,
+    u32 => to_u32,
+    u64 => to_u64,
+    u128 => to_u128,
+    usize => to_usize,
+    i8 => to_i8,
+    i16 => to_i16,
+    i32 => to_i32,
+    i64 => to_i64,
+    i128 => to_i128,
+    isize => to_isize,
 );
 
 macro_rules! nonzero_int_impl {
-    ($($primitive:ty),*) => {
+    ($($primitive:ty => $to_primitive:ident),* $(,)?) => {
         $(impl<'de> Deserialize<'de> for $primitive {
             fn deserialize<D>(deserializer: D) -> Result<Self>
             where
                 D: DeserializerTrait<'de>,
             {
-                let i = deserializer.deserialize(NonZeroIntVisitor)?;
+                let i = match deserializer.deserialize(NonZeroIntVisitor(Default::default()))? {
+                    IntVisitorValue::Fixnum(v) => num_traits::ToPrimitive::$to_primitive(&v).ok_or(Error { kind: Kind::NumericOverflow }),
+                    IntVisitorValue::Bignum(v) => num_traits::ToPrimitive::$to_primitive(&v).ok_or(Error { kind: Kind::NumericOverflow }),
+                    IntVisitorValue::BignumRef(v) => num_traits::ToPrimitive::$to_primitive(&v).ok_or(Error { kind: Kind::NumericOverflow }),
+                }?;
                 // we've already asserted that it's non-zero simply by the fact that NonZeroIntVisitor returns a nonzero integer.
                 // so this new_unchecked is safe
-                Ok(unsafe { <$primitive>::new_unchecked(i.try_into().map_err(|_| Error { kind: Kind::NumericOverflow })?) })
+                Ok(unsafe { <$primitive>::new_unchecked(i) })
             }
         })*
     };
 }
 
 nonzero_int_impl!(
-    NonZeroU8,
-    NonZeroU16,
-    NonZeroU32,
-    NonZeroU64,
-    NonZeroU128,
-    NonZeroUsize,
-    NonZeroI8,
-    NonZeroI16,
-    NonZeroI32,
-    NonZeroI64,
-    NonZeroI128,
-    NonZeroIsize
+    NonZeroU8 => to_u8,
+    NonZeroU16 => to_u16,
+    NonZeroU32 => to_u32,
+    NonZeroU64 => to_u64,
+    NonZeroU128 => to_u128,
+    NonZeroUsize => to_usize,
+    NonZeroI8 => to_i8,
+    NonZeroI16 => to_i16,
+    NonZeroI32 => to_i32,
+    NonZeroI64 => to_i64,
+    NonZeroI128 => to_i128,
+    NonZeroIsize => to_isize,
 );
 
 struct UnitVisitor;
@@ -199,9 +228,14 @@ impl Visitor<'_> for FloatVisitor {
         formatter.write_str("a float")
     }
 
-    fn visit_bignum(self, v: num_bigint::BigInt) -> Result<Self::Value> {
-        use num_traits::ToPrimitive;
-        v.to_f64().ok_or(Error {
+    fn visit_fixnum(self, v: Fixnum) -> Result<Self::Value> {
+        num_traits::ToPrimitive::to_f64(&v).ok_or(Error {
+            kind: Kind::NumericOverflow,
+        })
+    }
+
+    fn visit_bignum(self, v: BignumRef<'_>) -> Result<Self::Value> {
+        num_traits::ToPrimitive::to_f64(&v).ok_or(Error {
             kind: Kind::NumericOverflow,
         })
     }

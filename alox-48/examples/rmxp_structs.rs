@@ -1,6 +1,7 @@
 #![allow(dead_code, missing_docs)]
 
-use alox_48::Deserialize;
+use alox_48::{Bignum, Deserialize, Fixnum};
+use num_traits::ToPrimitive;
 
 #[derive(Debug, Deserialize)]
 pub struct Color {
@@ -25,7 +26,8 @@ impl Default for Color {
 #[derive(Debug, Deserialize)]
 #[marshal(from = "alox_48::Value")]
 pub enum ParameterType {
-    Integer(num_bigint::BigInt),
+    Fixnum(Fixnum),
+    Bignum(Bignum),
     String(String),
     Color(Color),
     Tone(Tone),
@@ -50,7 +52,8 @@ impl From<alox_48::Value> for ParameterType {
         println!("{value:#?}");
 
         match value {
-            Value::Integer(i) => Self::Integer(i as _),
+            Value::Fixnum(i) => Self::Fixnum(i),
+            Value::Bignum(i) => Self::Bignum(i),
             Value::String(str) => Self::String(str.to_string_lossy().into_owned()),
             Value::Object(obj) if obj.class == "RPG::AudioFile" => {
                 Self::AudioFile(rpg::AudioFile {
@@ -62,15 +65,15 @@ impl From<alox_48::Value> for ParameterType {
                         .into_owned(),
                     volume: obj.fields[symbol!("volume")]
                         .clone()
-                        .into_integer()
+                        .into_fixnum()
                         .unwrap()
-                        .try_into()
+                        .to_u8()
                         .unwrap(),
                     pitch: obj.fields[symbol!("pitch")]
                         .clone()
-                        .into_integer()
+                        .into_fixnum()
                         .unwrap()
-                        .try_into()
+                        .to_u8()
                         .unwrap(),
                 })
             }
@@ -92,10 +95,9 @@ impl From<alox_48::Value> for ParameterType {
                             rpg::MoveCommand {
                                 code: obj.fields[symbol!("code")]
                                     .clone()
-                                    .into_integer()
+                                    .into_fixnum()
                                     .unwrap()
-                                    .try_into()
-                                    .unwrap(),
+                                    .into(),
                                 parameters: obj.fields[symbol!("parameters")]
                                     .clone()
                                     .into_array()
@@ -111,10 +113,9 @@ impl From<alox_48::Value> for ParameterType {
                 Self::MoveCommand(rpg::MoveCommand {
                     code: obj.fields[symbol!("code")]
                         .clone()
-                        .into_integer()
+                        .into_fixnum()
                         .unwrap()
-                        .try_into()
-                        .unwrap(),
+                        .into(),
                     parameters: obj.fields[symbol!("parameters")]
                         .clone()
                         .into_array()

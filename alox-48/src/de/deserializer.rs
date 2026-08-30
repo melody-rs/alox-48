@@ -10,7 +10,7 @@
 #![allow(clippy::cast_lossless)]
 
 use super::{ignored::Ignored, DeserializeSeed, Error, Kind, Result};
-use crate::{tag::Tag, Deserialize, Sym, Visitor};
+use crate::{tag::Tag, BignumRef, Deserialize, Fixnum, Sym, Visitor};
 
 /// The alox-48 deserializer.
 #[derive(Debug, Clone)]
@@ -312,17 +312,26 @@ impl<'de> super::DeserializerTrait<'de> for &mut Deserializer<'de> {
             Tag::Nil => visitor.visit_nil(),
             Tag::True => visitor.visit_bool(true),
             Tag::False => visitor.visit_bool(false),
-            Tag::Fixnum => visitor.visit_bignum(self.read_packed_int()?.into()),
+            Tag::Fixnum => visitor.visit_fixnum({
+                let int = self.read_packed_int()?;
+                num_traits::FromPrimitive::from_i32(int).ok_or_else(|| Error {
+                    kind: Kind::ParseFixnumOverflow(
+                        num_traits::FromPrimitive::from_i32(int).unwrap(),
+                    ),
+                })?
+            }),
             Tag::Float => visitor.visit_f64(self.read_float()?),
             Tag::Bignum => {
-                let sign = if self.cursor.next_byte()? == b'-' {
-                    num_bigint::Sign::Minus
-                } else {
-                    num_bigint::Sign::Plus
-                };
+                let is_negative = self.cursor.next_byte()? == b'-';
                 let len = 2 * self.read_usize()?;
-                let bytes = self.cursor.next_bytes_dyn(len)?;
-                visitor.visit_bignum(num_bigint::BigInt::from_bytes_le(sign, bytes))
+                let le_bytes = self.cursor.next_bytes_dyn(len)?;
+                visitor.visit_bignum(BignumRef::from_le_bytes(is_negative, le_bytes).ok_or_else(
+                    || Error {
+                        kind: Kind::ParseBignumUnderflow(
+                            Fixnum::from_le_bytes(is_negative, le_bytes).unwrap(),
+                        ),
+                    },
+                )?)
             }
             Tag::String => {
                 let data = self.read_bytes_len()?;

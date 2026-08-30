@@ -7,8 +7,8 @@ use std::cell::Cell;
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::{add_context, Context, Trace};
 use crate::{
-    SerResult, Serialize, SerializeArray, SerializeHash, SerializeIvars, SerializerTrait, Sym,
-    Symbol,
+    BignumRef, Fixnum, SerResult, Serialize, SerializeArray, SerializeHash, SerializeIvars,
+    SerializerTrait, Sym, Symbol,
 };
 
 /// A serializer that tracks the path to an error.
@@ -83,10 +83,17 @@ where
         )
     }
 
-    fn serialize_bignum(self, v: num_bigint::BigInt) -> SerResult<Self::Ok> {
+    fn serialize_fixnum(self, v: Fixnum) -> SerResult<Self::Ok> {
         add_context!(
-            self.serializer.serialize_bignum(v.clone()),
-            self.trace.push(Context::Int(v))
+            self.serializer.serialize_fixnum(v),
+            self.trace.push(Context::Fixnum(v))
+        )
+    }
+
+    fn serialize_bignum(self, v: BignumRef<'_>) -> SerResult<Self::Ok> {
+        add_context!(
+            self.serializer.serialize_bignum(v),
+            self.trace.push(Context::Bignum(v.into()))
         )
     }
 

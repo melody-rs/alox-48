@@ -8,7 +8,7 @@
 use indexmap::IndexSet;
 
 use super::{Error, Kind, Result};
-use crate::{tag::Tag, Sym, Symbol};
+use crate::{tag::Tag, BignumRef, Fixnum, Sym, Symbol};
 
 /// The `alox_48` serializer.
 #[derive(Debug, Clone)]
@@ -154,27 +154,24 @@ impl<'a> super::SerializerTrait for &'a mut Serializer {
         Ok(())
     }
 
-    fn serialize_bignum(self, v: num_bigint::BigInt) -> Result<Self::Ok> {
-        use num_traits::FromPrimitive;
-        if (num_bigint::BigInt::from_i32(-(1 << 30)).unwrap()
-            ..num_bigint::BigInt::from_i32(1 << 30).unwrap())
-            .contains(&v)
-        {
-            self.write(Tag::Fixnum);
-            self.write_int(v.try_into().unwrap());
-        } else {
-            self.write(Tag::Bignum);
-            let (sign, bytes) = v.to_bytes_le();
-            self.write(if sign == num_bigint::Sign::Minus {
-                b'-'
-            } else {
-                b'+'
-            });
-            self.write_int(bytes.len().div_ceil(2) as i64);
-            self.write_bytes(&bytes);
-            if bytes.len() % 2 != 0 {
-                self.write(0u8);
-            }
+    fn serialize_fixnum(self, v: Fixnum) -> Result<Self::Ok> {
+        self.write(Tag::Fixnum);
+        self.write_int(v.into());
+
+        Ok(())
+    }
+
+    fn serialize_bignum(self, v: BignumRef<'_>) -> Result<Self::Ok> {
+        self.write(Tag::Bignum);
+
+        let (is_negative, le_bytes) = v.as_le_bytes();
+
+        self.write(if is_negative { b'-' } else { b'+' });
+
+        self.write_int(le_bytes.len().div_ceil(2) as i64);
+        self.write_bytes(le_bytes);
+        if le_bytes.len() % 2 != 0 {
+            self.write(0u8);
         }
 
         Ok(())

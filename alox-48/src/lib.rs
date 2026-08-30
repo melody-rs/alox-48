@@ -574,7 +574,7 @@ mod ints {
 
     #[test]
     fn round_trip_value() {
-        let value = crate::Value::Integer(123.into());
+        let value = crate::Value::Fixnum(123i16.into());
 
         let bytes = crate::to_bytes(&value).unwrap();
 
@@ -887,7 +887,7 @@ mod value_test {
         let instance = obj.into_instance().unwrap();
 
         assert_eq!(instance.value.as_ref(), "hello!");
-        assert_eq!(instance.fields["@random"], num_bigint::BigInt::from(123));
+        assert_eq!(instance.fields["@random"], 123);
     }
 
     #[test]
@@ -903,7 +903,7 @@ mod value_test {
 
         let array = instance.value.as_array().unwrap();
         assert_eq!(&array[0], "test");
-        assert_eq!(array[1], num_bigint::BigInt::from(123));
+        assert_eq!(array[1], 123);
         assert_eq!(instance.fields["@ivar"], 5.0);
     }
 
@@ -977,7 +977,7 @@ mod round_trip {
 
     #[test]
     fn integer() {
-        let original = Value::Integer(123.into());
+        let original = Value::Fixnum(123i16.into());
 
         let bytes = to_bytes(&original).unwrap();
 
@@ -988,7 +988,8 @@ mod round_trip {
 
     #[test]
     fn integer_bignum() {
-        let original = Value::Integer(12345678987654321i64.into());
+        let original =
+            Value::Bignum(num_traits::FromPrimitive::from_i64(12345678987654321).unwrap());
 
         let bytes = to_bytes(&original).unwrap();
 
@@ -999,7 +1000,8 @@ mod round_trip {
 
     #[test]
     fn integer_bignum_negative() {
-        let original = Value::Integer((-12345678987654321i64).into());
+        let original =
+            Value::Bignum(num_traits::FromPrimitive::from_i64(12345678987654321).unwrap());
 
         let bytes = to_bytes(&original).unwrap();
 
@@ -1032,7 +1034,7 @@ mod round_trip {
 
     #[test]
     fn array() {
-        let original = Value::Array(vec![Value::Integer(1.into()), Value::Float(256.652)]);
+        let original = Value::Array(vec![Value::Fixnum(1i16.into()), Value::Float(256.652)]);
 
         let bytes = to_bytes(&original).unwrap();
 
@@ -1044,7 +1046,7 @@ mod round_trip {
     #[test]
     fn hash() {
         let mut hash = RbHash::new();
-        hash.insert(Value::Bool(true), Value::Integer(1.into()));
+        hash.insert(Value::Bool(true), Value::Fixnum(1i16.into()));
         hash.insert(Value::Symbol("a_symbol".into()), Value::Float(256.652));
         let original = Value::Hash(hash);
 
@@ -1094,7 +1096,7 @@ mod round_trip {
         let inner_value = Box::new(Value::String("I've been round tripped, with ivars!".into()));
         let mut fields = RbFields::new();
         fields.insert("E".into(), Value::Bool(true));
-        fields.insert("@round_trip".into(), Value::Integer(123.into()));
+        fields.insert("@round_trip".into(), Value::Fixnum(123i16.into()));
         let original = Value::Instance(Instance {
             value: inner_value,
             fields,

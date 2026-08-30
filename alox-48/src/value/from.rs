@@ -63,17 +63,46 @@ impl From<bool> for Value {
     }
 }
 
+impl From<f32> for Value {
+    fn from(value: f32) -> Self {
+        Self::Float(value as _)
+    }
+}
+
 impl From<f64> for Value {
     fn from(value: f64) -> Self {
         Self::Float(value)
     }
 }
 
-impl From<num_bigint::BigInt> for Value {
-    fn from(value: num_bigint::BigInt) -> Self {
-        Self::Integer(value)
-    }
+macro_rules! from_primitive_int_impl {
+    ($($primitive:ty => $from_primitive:ident),* $(,)?) => {
+        $(impl From<$primitive> for Value {
+            fn from(value: $primitive) -> Self {
+                if let Some(fixnum) = num_traits::FromPrimitive::$from_primitive(value) {
+                    Self::Fixnum(fixnum)
+                } else {
+                    Self::Bignum(num_traits::FromPrimitive::$from_primitive(value).unwrap())
+                }
+            }
+        })*
+    };
 }
+
+from_primitive_int_impl!(
+    u8 => from_u8,
+    u16 => from_u16,
+    u32 => from_u32,
+    u64 => from_u64,
+    u128 => from_u128,
+    usize => from_usize,
+    i8 => from_i8,
+    i16 => from_i16,
+    i32 => from_i32,
+    i64 => from_i64,
+    i128 => from_i128,
+    isize => from_isize,
+);
 
 impl From<RbHash> for Value {
     fn from(value: RbHash) -> Self {
@@ -107,13 +136,38 @@ impl TryInto<RbString> for Value {
     }
 }
 
-impl TryInto<num_bigint::BigInt> for Value {
-    type Error = Self;
+macro_rules! to_primitive_int_impl {
+    ($($primitive:ty => $to_primitive:ident),* $(,)?) => {
+        $(impl TryInto<$primitive> for Value {
+            type Error = Self;
 
-    fn try_into(self) -> Result<num_bigint::BigInt, Self::Error> {
-        self.into_integer()
-    }
+            fn try_into(self) -> Result<$primitive, Self::Error> {
+                match self.into_fixnum() {
+                    Ok(fixnum) => num_traits::ToPrimitive::$to_primitive(&fixnum).ok_or(Value::Fixnum(fixnum)),
+                    Err(value) => {
+                        let bignum = value.into_bignum()?;
+                        num_traits::ToPrimitive::$to_primitive(&bignum).ok_or(Value::Bignum(bignum))
+                    }
+                }
+            }
+        })*
+    };
 }
+
+to_primitive_int_impl!(
+    u8 => to_u8,
+    u16 => to_u16,
+    u32 => to_u32,
+    u64 => to_u64,
+    u128 => to_u128,
+    usize => to_usize,
+    i8 => to_i8,
+    i16 => to_i16,
+    i32 => to_i32,
+    i64 => to_i64,
+    i128 => to_i128,
+    isize => to_isize,
+);
 
 impl TryInto<f64> for Value {
     type Error = Self;

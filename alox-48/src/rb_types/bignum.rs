@@ -33,6 +33,15 @@ impl<'a> From<&'a Bignum> for BignumRef<'a> {
     }
 }
 
+impl<'a> From<BignumRef<'a>> for Bignum {
+    fn from(value: BignumRef<'a>) -> Self {
+        Self {
+            is_negative: value.is_negative,
+            le_bytes: value.le_bytes.to_vec(),
+        }
+    }
+}
+
 impl<'a> BignumRef<'a> {
     /// Attempts to create a new `BignumRef` from a sign and little-endian bytes.
     /// Will fail if the represented integer is within the interval $[-2^30, 2^30)$.
