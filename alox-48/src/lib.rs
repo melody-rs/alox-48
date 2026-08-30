@@ -551,8 +551,8 @@ mod ints {
     }
 
     #[test]
-    fn round_trip_bignum_positive() {
-        let int = 12345678987654321i64;
+    fn round_trip_bignum_positive_even_length() {
+        let int: i64 = 0x1122334455667788;
 
         let bytes = crate::to_bytes(int).unwrap();
 
@@ -562,8 +562,30 @@ mod ints {
     }
 
     #[test]
-    fn round_trip_bignum_negative() {
-        let int = -12345678987654321i64;
+    fn round_trip_bignum_negative_even_length() {
+        let int: i64 = -0x1122334455667788;
+
+        let bytes = crate::to_bytes(int).unwrap();
+
+        let int2 = crate::from_bytes(&bytes).unwrap();
+
+        assert_eq!(int, int2);
+    }
+
+    #[test]
+    fn round_trip_bignum_positive_odd_length() {
+        let int: i64 = 0x11223344556677;
+
+        let bytes = crate::to_bytes(int).unwrap();
+
+        let int2 = crate::from_bytes(&bytes).unwrap();
+
+        assert_eq!(int, int2);
+    }
+
+    #[test]
+    fn round_trip_bignum_negative_odd_length() {
+        let int: i64 = -0x11223344556677;
 
         let bytes = crate::to_bytes(int).unwrap();
 
@@ -987,9 +1009,9 @@ mod round_trip {
     }
 
     #[test]
-    fn integer_bignum() {
+    fn integer_bignum_positive_even_length() {
         let original =
-            Value::Bignum(num_traits::FromPrimitive::from_i64(12345678987654321).unwrap());
+            Value::Bignum(num_traits::FromPrimitive::from_i64(0x1122334455667788).unwrap());
 
         let bytes = to_bytes(&original).unwrap();
 
@@ -999,9 +1021,33 @@ mod round_trip {
     }
 
     #[test]
-    fn integer_bignum_negative() {
+    fn integer_bignum_negative_even_length() {
         let original =
-            Value::Bignum(num_traits::FromPrimitive::from_i64(12345678987654321).unwrap());
+            Value::Bignum(num_traits::FromPrimitive::from_i64(-0x1122334455667788).unwrap());
+
+        let bytes = to_bytes(&original).unwrap();
+
+        let new: Value = from_bytes(&bytes).unwrap();
+
+        assert_eq!(original, new);
+    }
+
+    #[test]
+    fn integer_bignum_positive_odd_length() {
+        let original =
+            Value::Bignum(num_traits::FromPrimitive::from_i64(0x11223344556677).unwrap());
+
+        let bytes = to_bytes(&original).unwrap();
+
+        let new: Value = from_bytes(&bytes).unwrap();
+
+        assert_eq!(original, new);
+    }
+
+    #[test]
+    fn integer_bignum_negative_odd_length() {
+        let original =
+            Value::Bignum(num_traits::FromPrimitive::from_i64(-0x11223344556677).unwrap());
 
         let bytes = to_bytes(&original).unwrap();
 
