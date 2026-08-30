@@ -128,3 +128,9 @@ impl std::fmt::Debug for Fixnum {
         self.0.fmt(f)
     }
 }
+
+impl std::fmt::Display for Fixnum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}

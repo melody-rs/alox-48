@@ -386,3 +386,15 @@ impl std::fmt::Debug for Bignum {
         self.as_ref().fmt(f)
     }
 }
+
+impl std::fmt::Display for BignumRef<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        num_bigint::BigInt::from(self).fmt(f)
+    }
+}
+
+impl std::fmt::Display for Bignum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}
