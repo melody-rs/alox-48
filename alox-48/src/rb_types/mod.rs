@@ -38,12 +38,11 @@ pub type RbFields = IndexMap<Symbol, Value>;
 /// Returns `false` if `le_bytes` contains only zero bytes or `is_negative` otherwise, and the size
 /// of `le_bytes` excluding trailing zero bytes.
 fn get_canonical_le_bytes_info(is_negative: bool, le_bytes: &[u8]) -> (bool, usize) {
-    for (i, byte) in le_bytes.iter().copied().enumerate().rev() {
-        if byte != 0 {
-            return (is_negative, i + 1);
-        }
+    if let Some((i, _)) = le_bytes.iter().enumerate().rfind(|(_, byte)| **byte != 0) {
+        (is_negative, i + 1)
+    } else {
+        (false, 0)
     }
-    (false, 0)
 }
 
 /// Returns an unambiguous version of the integer represented by the given sign and little-endian
