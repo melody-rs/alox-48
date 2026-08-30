@@ -6,6 +6,8 @@
 use super::Value;
 use indexmap::IndexMap;
 
+mod bignum;
+mod fixnum;
 mod instance;
 mod object;
 mod rb_string;
@@ -14,6 +16,8 @@ mod sym;
 mod symbol;
 mod userdata;
 
+pub use bignum::{Bignum, BignumRef};
+pub use fixnum::Fixnum;
 pub use instance::Instance;
 pub use object::Object;
 pub use rb_string::RbString;
@@ -30,3 +34,13 @@ pub type RbHash = IndexMap<Value, Value>;
 /// A type alias used to represent fields of objects.
 /// All objects store a [`Symbol`] to represent the key for instance variable, and we do that here too.
 pub type RbFields = IndexMap<Symbol, Value>;
+
+/// Returns the size of `le_bytes` excluding trailing null bytes.
+fn get_le_bytes_size(le_bytes: &[u8]) -> usize {
+    for (i, byte) in le_bytes.iter().copied().enumerate().rev() {
+        if byte != 0 {
+            return i + 1;
+        }
+    }
+    0
+}
