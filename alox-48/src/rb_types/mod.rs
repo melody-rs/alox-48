@@ -59,3 +59,12 @@ fn canonicalize_le_bytes_vec(is_negative: bool, mut le_bytes: Vec<u8>) -> (bool,
     le_bytes.truncate(le_bytes_size);
     (is_negative, le_bytes)
 }
+
+/// If `slice` contains at least `N` elements, returns a copy of the first `N` elements. Otherwise,
+/// returns a copy of `slice` zero-extended at the end.
+fn to_array_with_default<const N: usize>(slice: &[u8]) -> [u8; N] {
+    let mut bytes = [0u8; N];
+    let copy_size = N.min(slice.len());
+    bytes[..copy_size].copy_from_slice(&slice[..copy_size]);
+    bytes
+}

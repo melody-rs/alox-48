@@ -180,16 +180,7 @@ impl num_traits::ToPrimitive for BignumRef<'_> {
     fn to_i64(&self) -> Option<i64> {
         (self.le_bytes.len() <= size_of::<i64>())
             .then(|| {
-                let value = i64::from_le_bytes([
-                    self.le_bytes.first().copied().unwrap_or_default(),
-                    self.le_bytes.get(1).copied().unwrap_or_default(),
-                    self.le_bytes.get(2).copied().unwrap_or_default(),
-                    self.le_bytes.get(3).copied().unwrap_or_default(),
-                    self.le_bytes.get(4).copied().unwrap_or_default(),
-                    self.le_bytes.get(5).copied().unwrap_or_default(),
-                    self.le_bytes.get(6).copied().unwrap_or_default(),
-                    self.le_bytes.get(7).copied().unwrap_or_default(),
-                ]);
+                let value = i64::from_le_bytes(super::to_array_with_default(self.le_bytes));
                 let value = if self.is_negative {
                     value.wrapping_neg()
                 } else {
@@ -203,24 +194,7 @@ impl num_traits::ToPrimitive for BignumRef<'_> {
     fn to_i128(&self) -> Option<i128> {
         (self.le_bytes.len() <= size_of::<i128>())
             .then(|| {
-                let value = i128::from_le_bytes([
-                    self.le_bytes.first().copied().unwrap_or_default(),
-                    self.le_bytes.get(1).copied().unwrap_or_default(),
-                    self.le_bytes.get(2).copied().unwrap_or_default(),
-                    self.le_bytes.get(3).copied().unwrap_or_default(),
-                    self.le_bytes.get(4).copied().unwrap_or_default(),
-                    self.le_bytes.get(5).copied().unwrap_or_default(),
-                    self.le_bytes.get(6).copied().unwrap_or_default(),
-                    self.le_bytes.get(7).copied().unwrap_or_default(),
-                    self.le_bytes.get(8).copied().unwrap_or_default(),
-                    self.le_bytes.get(9).copied().unwrap_or_default(),
-                    self.le_bytes.get(10).copied().unwrap_or_default(),
-                    self.le_bytes.get(11).copied().unwrap_or_default(),
-                    self.le_bytes.get(12).copied().unwrap_or_default(),
-                    self.le_bytes.get(13).copied().unwrap_or_default(),
-                    self.le_bytes.get(14).copied().unwrap_or_default(),
-                    self.le_bytes.get(15).copied().unwrap_or_default(),
-                ]);
+                let value = i128::from_le_bytes(super::to_array_with_default(self.le_bytes));
                 let value = if self.is_negative {
                     value.wrapping_neg()
                 } else {
@@ -232,41 +206,13 @@ impl num_traits::ToPrimitive for BignumRef<'_> {
     }
 
     fn to_u64(&self) -> Option<u64> {
-        (!self.is_negative && self.le_bytes.len() <= size_of::<u64>()).then(|| {
-            u64::from_le_bytes([
-                self.le_bytes.first().copied().unwrap_or_default(),
-                self.le_bytes.get(1).copied().unwrap_or_default(),
-                self.le_bytes.get(2).copied().unwrap_or_default(),
-                self.le_bytes.get(3).copied().unwrap_or_default(),
-                self.le_bytes.get(4).copied().unwrap_or_default(),
-                self.le_bytes.get(5).copied().unwrap_or_default(),
-                self.le_bytes.get(6).copied().unwrap_or_default(),
-                self.le_bytes.get(7).copied().unwrap_or_default(),
-            ])
-        })
+        (!self.is_negative && self.le_bytes.len() <= size_of::<u64>())
+            .then(|| u64::from_le_bytes(super::to_array_with_default(self.le_bytes)))
     }
 
     fn to_u128(&self) -> Option<u128> {
-        (!self.is_negative && self.le_bytes.len() <= size_of::<u128>()).then(|| {
-            u128::from_le_bytes([
-                self.le_bytes.first().copied().unwrap_or_default(),
-                self.le_bytes.get(1).copied().unwrap_or_default(),
-                self.le_bytes.get(2).copied().unwrap_or_default(),
-                self.le_bytes.get(3).copied().unwrap_or_default(),
-                self.le_bytes.get(4).copied().unwrap_or_default(),
-                self.le_bytes.get(5).copied().unwrap_or_default(),
-                self.le_bytes.get(6).copied().unwrap_or_default(),
-                self.le_bytes.get(7).copied().unwrap_or_default(),
-                self.le_bytes.get(8).copied().unwrap_or_default(),
-                self.le_bytes.get(9).copied().unwrap_or_default(),
-                self.le_bytes.get(10).copied().unwrap_or_default(),
-                self.le_bytes.get(11).copied().unwrap_or_default(),
-                self.le_bytes.get(12).copied().unwrap_or_default(),
-                self.le_bytes.get(13).copied().unwrap_or_default(),
-                self.le_bytes.get(14).copied().unwrap_or_default(),
-                self.le_bytes.get(15).copied().unwrap_or_default(),
-            ])
-        })
+        (!self.is_negative && self.le_bytes.len() <= size_of::<u128>())
+            .then(|| u128::from_le_bytes(super::to_array_with_default(self.le_bytes)))
     }
 
     fn to_f64(&self) -> Option<f64> {
@@ -284,16 +230,7 @@ impl num_traits::ToPrimitive for BignumRef<'_> {
         let value_unsigned = if shift > (f64::MAX_EXP / 8).try_into().unwrap() {
             f64::INFINITY
         } else {
-            let mantissa = u64::from_le_bytes([
-                mantissa_le_bytes.first().copied().unwrap_or_default(),
-                mantissa_le_bytes.get(1).copied().unwrap_or_default(),
-                mantissa_le_bytes.get(2).copied().unwrap_or_default(),
-                mantissa_le_bytes.get(3).copied().unwrap_or_default(),
-                mantissa_le_bytes.get(4).copied().unwrap_or_default(),
-                mantissa_le_bytes.get(5).copied().unwrap_or_default(),
-                mantissa_le_bytes.get(6).copied().unwrap_or_default(),
-                mantissa_le_bytes.get(7).copied().unwrap_or_default(),
-            ]);
+            let mantissa = u64::from_le_bytes(super::to_array_with_default(mantissa_le_bytes));
             num_traits::ToPrimitive::to_f64(&mantissa).unwrap() * 2.0f64.powi(8 * shift as i32)
         };
         Some(if self.is_negative {

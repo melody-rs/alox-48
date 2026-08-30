@@ -15,12 +15,7 @@ impl Fixnum {
         let (is_negative, le_bytes) = super::canonicalize_le_bytes_ref(is_negative, le_bytes);
         (le_bytes.len() <= size_of::<i32>())
             .then(|| {
-                let value = i32::from_le_bytes([
-                    le_bytes.first().copied().unwrap_or_default(),
-                    le_bytes.get(1).copied().unwrap_or_default(),
-                    le_bytes.get(2).copied().unwrap_or_default(),
-                    le_bytes.get(3).copied().unwrap_or_default(),
-                ]);
+                let value = i32::from_le_bytes(super::to_array_with_default(le_bytes));
                 let value = if is_negative {
                     value.wrapping_neg()
                 } else {
