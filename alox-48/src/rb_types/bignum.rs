@@ -354,15 +354,11 @@ impl num_bigint::ToBigUint for Bignum {
 
 impl Ord for BignumRef<'_> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        let ord = other.is_negative.cmp(&self.is_negative);
-        if ord.is_ne() {
-            return ord;
-        }
-        let ord = self.le_bytes.len().cmp(&other.le_bytes.len());
-        if ord.is_ne() {
-            return ord;
-        }
-        self.le_bytes.iter().rev().cmp(other.le_bytes.iter().rev())
+        other
+            .is_negative
+            .cmp(&self.is_negative)
+            .then_with(|| self.le_bytes.len().cmp(&other.le_bytes.len()))
+            .then_with(|| self.le_bytes.iter().rev().cmp(other.le_bytes.iter().rev()))
     }
 }
 
