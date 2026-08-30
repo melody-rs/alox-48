@@ -12,12 +12,7 @@ impl Fixnum {
     /// Attempts to create a new `Fixnum` from a sign and little-endian bytes.
     /// Will fail if the represented integer is outside of the interval $[-2^30, 2^30)$.
     pub fn from_le_bytes(is_negative: bool, le_bytes: &[u8]) -> Option<Self> {
-        let le_bytes = &le_bytes[..super::get_le_bytes_size(le_bytes)];
-        let is_negative = if le_bytes.is_empty() {
-            false
-        } else {
-            is_negative
-        };
+        let (is_negative, le_bytes) = super::canonicalize_le_bytes_ref(is_negative, le_bytes);
         (le_bytes.len() <= size_of::<i32>())
             .then(|| {
                 let value = i32::from_le_bytes([

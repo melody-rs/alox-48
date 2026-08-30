@@ -46,12 +46,7 @@ impl<'a> BignumRef<'a> {
     /// Attempts to create a new `BignumRef` from a sign and little-endian bytes.
     /// Will fail if the represented integer is within the interval $[-2^30, 2^30)$.
     pub fn from_le_bytes(is_negative: bool, le_bytes: &'a [u8]) -> Option<Self> {
-        let le_bytes = &le_bytes[..super::get_le_bytes_size(le_bytes)];
-        let is_negative = if le_bytes.is_empty() {
-            false
-        } else {
-            is_negative
-        };
+        let (is_negative, le_bytes) = super::canonicalize_le_bytes_ref(is_negative, le_bytes);
         let value = Self {
             is_negative,
             le_bytes,
@@ -70,13 +65,8 @@ impl<'a> BignumRef<'a> {
 impl Bignum {
     /// Attempts to create a new `Bignum` from a sign and little-endian bytes.
     /// Will fail if the represented integer is within the interval $[-2^30, 2^30)$.
-    pub fn from_le_bytes(is_negative: bool, mut le_bytes: Vec<u8>) -> Option<Self> {
-        le_bytes.truncate(super::get_le_bytes_size(&le_bytes));
-        let is_negative = if le_bytes.is_empty() {
-            false
-        } else {
-            is_negative
-        };
+    pub fn from_le_bytes(is_negative: bool, le_bytes: Vec<u8>) -> Option<Self> {
+        let (is_negative, le_bytes) = super::canonicalize_le_bytes_vec(is_negative, le_bytes);
         let value = Self {
             is_negative,
             le_bytes,
@@ -130,34 +120,42 @@ impl From<&Bignum> for num_bigint::BigInt {
 
 impl num_traits::FromPrimitive for Bignum {
     fn from_i64(n: i64) -> Option<Self> {
-        let le_bytes = n.wrapping_abs().to_le_bytes();
-        crate::Fixnum::from_i64(n).is_none().then(|| Self {
-            is_negative: n.is_negative(),
-            le_bytes: le_bytes[..super::get_le_bytes_size(&le_bytes)].to_vec(),
+        let (is_negative, le_bytes) = super::canonicalize_le_bytes_vec(
+            n.is_negative(),
+            n.wrapping_abs().to_le_bytes().to_vec(),
+        );
+        crate::Fixnum::from_i64(n).is_none().then_some(Self {
+            is_negative,
+            le_bytes,
         })
     }
 
     fn from_i128(n: i128) -> Option<Self> {
-        let le_bytes = n.wrapping_abs().to_le_bytes();
-        crate::Fixnum::from_i128(n).is_none().then(|| Self {
-            is_negative: n.is_negative(),
-            le_bytes: le_bytes[..super::get_le_bytes_size(&le_bytes)].to_vec(),
+        let (is_negative, le_bytes) = super::canonicalize_le_bytes_vec(
+            n.is_negative(),
+            n.wrapping_abs().to_le_bytes().to_vec(),
+        );
+        crate::Fixnum::from_i128(n).is_none().then_some(Self {
+            is_negative,
+            le_bytes,
         })
     }
 
     fn from_u64(n: u64) -> Option<Self> {
-        let le_bytes = n.to_le_bytes();
-        crate::Fixnum::from_u64(n).is_none().then(|| Self {
-            is_negative: false,
-            le_bytes: le_bytes[..super::get_le_bytes_size(&le_bytes)].to_vec(),
+        let (is_negative, le_bytes) =
+            super::canonicalize_le_bytes_vec(false, n.to_le_bytes().to_vec());
+        crate::Fixnum::from_u64(n).is_none().then_some(Self {
+            is_negative,
+            le_bytes,
         })
     }
 
     fn from_u128(n: u128) -> Option<Self> {
-        let le_bytes = n.to_le_bytes();
-        crate::Fixnum::from_u128(n).is_none().then(|| Self {
-            is_negative: false,
-            le_bytes: le_bytes[..super::get_le_bytes_size(&le_bytes)].to_vec(),
+        let (is_negative, le_bytes) =
+            super::canonicalize_le_bytes_vec(false, n.to_le_bytes().to_vec());
+        crate::Fixnum::from_u128(n).is_none().then_some(Self {
+            is_negative,
+            le_bytes,
         })
     }
 

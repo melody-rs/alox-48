@@ -35,12 +35,28 @@ pub type RbHash = IndexMap<Value, Value>;
 /// All objects store a [`Symbol`] to represent the key for instance variable, and we do that here too.
 pub type RbFields = IndexMap<Symbol, Value>;
 
-/// Returns the size of `le_bytes` excluding trailing null bytes.
-fn get_le_bytes_size(le_bytes: &[u8]) -> usize {
+/// Returns `false` if `le_bytes` contains only zero bytes or `is_negative` otherwise, and the size
+/// of `le_bytes` excluding trailing zero bytes.
+fn get_canonical_le_bytes_info(is_negative: bool, le_bytes: &[u8]) -> (bool, usize) {
     for (i, byte) in le_bytes.iter().copied().enumerate().rev() {
         if byte != 0 {
-            return i + 1;
+            return (is_negative, i + 1);
         }
     }
-    0
+    (false, 0)
+}
+
+/// Returns an unambiguous version of the integer represented by the given sign and little-endian
+/// bytes.
+fn canonicalize_le_bytes_ref(is_negative: bool, le_bytes: &[u8]) -> (bool, &[u8]) {
+    let (is_negative, le_bytes_size) = get_canonical_le_bytes_info(is_negative, le_bytes);
+    (is_negative, &le_bytes[..le_bytes_size])
+}
+
+/// Returns an unambiguous version of the integer represented by the given sign and little-endian
+/// bytes.
+fn canonicalize_le_bytes_vec(is_negative: bool, mut le_bytes: Vec<u8>) -> (bool, Vec<u8>) {
+    let (is_negative, le_bytes_size) = get_canonical_le_bytes_info(is_negative, &le_bytes);
+    le_bytes.truncate(le_bytes_size);
+    (is_negative, le_bytes)
 }
