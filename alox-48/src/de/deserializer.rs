@@ -99,12 +99,16 @@ impl<'de> Cursor<'de> {
     }
 
     fn next_bytes_dyn(&mut self, length: usize) -> Result<&'de [u8]> {
-        if length > self.input.len() {
+        let new_position = self
+            .position
+            .checked_add(length)
+            .ok_or(Error { kind: Kind::Eof })?;
+        if new_position > self.input.len() {
             return Err(Error { kind: Kind::Eof });
         }
 
-        let ret = &self.input[self.position..self.position + length];
-        self.position += length;
+        let ret = &self.input[self.position..new_position];
+        self.position = new_position;
         Ok(ret)
     }
 }
