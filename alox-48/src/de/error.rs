@@ -46,9 +46,6 @@ pub enum Kind {
     /// A fixnum could not be read because it was outside of the interval $[-2^30, 2^30)$.
     #[error("Failed to parse {0} as a fixnum")]
     ParseFixnumOverflow(Bignum),
-    /// A bignum could not be read because it was inside of the interval $[-2^30, 2^30)$.
-    #[error("Failed to parse {0} as a bignum")]
-    ParseBignumUnderflow(Fixnum),
     /// A float could not be converted to an integer because it was infinite or NaN.
     #[error("Tried to interpret a nonfinite float as an int")]
     InvalidFloatToIntConversion,

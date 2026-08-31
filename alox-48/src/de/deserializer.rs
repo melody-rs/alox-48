@@ -325,13 +325,11 @@ impl<'de> super::DeserializerTrait<'de> for &mut Deserializer<'de> {
                 let is_negative = self.cursor.next_byte()? == b'-';
                 let len = 2 * self.read_usize()?;
                 let le_bytes = self.cursor.next_bytes_dyn(len)?;
-                visitor.visit_bignum(BignumRef::from_le_bytes(is_negative, le_bytes).ok_or_else(
-                    || Error {
-                        kind: Kind::ParseBignumUnderflow(
-                            Fixnum::from_le_bytes(is_negative, le_bytes).unwrap(),
-                        ),
-                    },
-                )?)
+                if let Some(bignum) = BignumRef::from_le_bytes(is_negative, le_bytes) {
+                    visitor.visit_bignum(bignum)
+                } else {
+                    visitor.visit_fixnum(Fixnum::from_le_bytes(is_negative, le_bytes).unwrap())
+                }
             }
             Tag::String => {
                 let data = self.read_bytes_len()?;
