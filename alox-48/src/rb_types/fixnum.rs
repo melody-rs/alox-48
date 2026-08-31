@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::{FromPrimitive, ToPrimitive};
+use crate::{FromPrimitive, NumCast, ToPrimitive};
 
 /// A type representing an integer within the interval [-2<sup>30</sup>, 2<sup>30</sup>).
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -101,6 +101,12 @@ impl ToPrimitive for Fixnum {
 
     fn to_u64(&self) -> Option<u64> {
         self.0.to_u64()
+    }
+}
+
+impl NumCast for Fixnum {
+    fn from<T: ToPrimitive>(n: T) -> Option<Self> {
+        n.to_i32().and_then(FromPrimitive::from_i32)
     }
 }
 

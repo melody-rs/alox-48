@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::{FromPrimitive, ToPrimitive};
+use crate::{FromPrimitive, NumCast, ToPrimitive};
 
 /// A type representing a borrowed arbitrary-precision integer outside of the interval
 /// [-2<sup>30</sup>, 2<sup>30</sup>).
@@ -233,6 +233,20 @@ impl ToPrimitive for Bignum {
 
     fn to_f64(&self) -> Option<f64> {
         self.as_ref().to_f64()
+    }
+}
+
+impl NumCast for Bignum {
+    fn from<T: ToPrimitive>(n: T) -> Option<Self> {
+        if let Some(n) = n.to_i128() {
+            FromPrimitive::from_i128(n)
+        } else if let Some(n) = n.to_u128() {
+            FromPrimitive::from_u128(n)
+        } else if let Some(n) = n.to_f64() {
+            FromPrimitive::from_f64(n)
+        } else {
+            None
+        }
     }
 }
 

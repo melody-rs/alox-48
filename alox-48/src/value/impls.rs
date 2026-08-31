@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::{Bignum, Fixnum, Object, RbArray, RbHash, RbString, Symbol, Userdata, Value};
-use crate::FromPrimitive;
+use crate::NumCast;
 
 impl PartialEq for Value {
     #[allow(clippy::too_many_lines)]
@@ -178,12 +178,12 @@ impl PartialEq<bool> for Value {
 }
 
 macro_rules! primitive_int_impl {
-    ($($primitive:ty => $from_primitive:ident),* $(,)?) => {
+    ($($primitive:ty),* $(,)?) => {
         $(impl PartialEq<$primitive> for Value {
             fn eq(&self, other: &$primitive) -> bool {
                 match self {
-                    Value::Fixnum(v) => Fixnum::$from_primitive(*other).is_some_and(|other| other == *v),
-                    Value::Bignum(v) => Bignum::$from_primitive(*other).is_some_and(|other| other == *v),
+                    Value::Fixnum(v) => <Fixnum as NumCast>::from(*other).is_some_and(|other| other == *v),
+                    Value::Bignum(v) => <Bignum as NumCast>::from(*other).is_some_and(|other| other == *v),
                     _ => false,
                 }
             }
@@ -191,20 +191,7 @@ macro_rules! primitive_int_impl {
     };
 }
 
-primitive_int_impl!(
-    u8 => from_u8,
-    u16 => from_u16,
-    u32 => from_u32,
-    u64 => from_u64,
-    u128 => from_u128,
-    usize => from_usize,
-    i8 => from_i8,
-    i16 => from_i16,
-    i32 => from_i32,
-    i64 => from_i64,
-    i128 => from_i128,
-    isize => from_isize,
-);
+primitive_int_impl!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
 
 impl PartialEq<f64> for Value {
     fn eq(&self, other: &f64) -> bool {
@@ -301,7 +288,7 @@ impl std::hash::Hash for Value {
             Value::Nil => {}
             Value::Bool(b) => b.hash(state),
             Value::Float(f) => f.to_bits().hash(state), // not the best but eh whos using a float as a hash key
-            Value::Fixnum(i) => i32::from(*i).hash(state),
+            Value::Fixnum(i) => <i32 as From<_>>::from(*i).hash(state),
             Value::Bignum(i) => i.as_le_bytes().hash(state),
             Value::String(s) => {
                 s.data.hash(state);

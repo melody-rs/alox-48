@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::{FromPrimitive, Instance, ToPrimitive};
+use crate::{Instance, NumCast};
 
 use super::{Object, RbHash, RbString, Symbol, Userdata, Value};
 
@@ -76,33 +76,20 @@ impl From<f64> for Value {
 }
 
 macro_rules! from_primitive_int_impl {
-    ($($primitive:ty => $from_primitive:ident),* $(,)?) => {
+    ($($primitive:ty),* $(,)?) => {
         $(impl From<$primitive> for Value {
             fn from(value: $primitive) -> Self {
-                if let Some(fixnum) = FromPrimitive::$from_primitive(value) {
+                if let Some(fixnum) = NumCast::from(value) {
                     Self::Fixnum(fixnum)
                 } else {
-                    Self::Bignum(FromPrimitive::$from_primitive(value).unwrap())
+                    Self::Bignum(NumCast::from(value).unwrap())
                 }
             }
         })*
     };
 }
 
-from_primitive_int_impl!(
-    u8 => from_u8,
-    u16 => from_u16,
-    u32 => from_u32,
-    u64 => from_u64,
-    u128 => from_u128,
-    usize => from_usize,
-    i8 => from_i8,
-    i16 => from_i16,
-    i32 => from_i32,
-    i64 => from_i64,
-    i128 => from_i128,
-    isize => from_isize,
-);
+from_primitive_int_impl!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
 
 impl From<RbHash> for Value {
     fn from(value: RbHash) -> Self {
@@ -137,16 +124,16 @@ impl TryInto<RbString> for Value {
 }
 
 macro_rules! to_primitive_int_impl {
-    ($($primitive:ty => $to_primitive:ident),* $(,)?) => {
+    ($($primitive:ty),* $(,)?) => {
         $(impl TryInto<$primitive> for Value {
             type Error = Self;
 
             fn try_into(self) -> Result<$primitive, Self::Error> {
                 match self.into_fixnum() {
-                    Ok(fixnum) => fixnum.$to_primitive().ok_or(Value::Fixnum(fixnum)),
+                    Ok(fixnum) => <$primitive as NumCast>::from(fixnum).ok_or(Value::Fixnum(fixnum)),
                     Err(value) => {
                         let bignum = value.into_bignum()?;
-                        bignum.$to_primitive().ok_or(Value::Bignum(bignum))
+                        <$primitive as NumCast>::from(bignum.as_ref()).ok_or(Value::Bignum(bignum))
                     }
                 }
             }
@@ -154,20 +141,7 @@ macro_rules! to_primitive_int_impl {
     };
 }
 
-to_primitive_int_impl!(
-    u8 => to_u8,
-    u16 => to_u16,
-    u32 => to_u32,
-    u64 => to_u64,
-    u128 => to_u128,
-    usize => to_usize,
-    i8 => to_i8,
-    i16 => to_i16,
-    i32 => to_i32,
-    i64 => to_i64,
-    i128 => to_i128,
-    isize => to_isize,
-);
+to_primitive_int_impl!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
 
 impl TryInto<f64> for Value {
     type Error = Self;
