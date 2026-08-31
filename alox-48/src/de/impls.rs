@@ -20,7 +20,7 @@ use super::{
     traits::VisitorOption, ArrayAccess, Deserialize, DeserializeSeed, DeserializerTrait, Error,
     HashAccess, Result, Unexpected, Visitor,
 };
-use crate::{Bignum, BignumRef, Fixnum, FromPrimitive, Sym, ToPrimitive};
+use crate::{BignumRef, Fixnum, NumCast, Sym};
 
 impl<'de, T> DeserializeSeed<'de> for PhantomData<T>
 where
@@ -36,20 +36,13 @@ where
     }
 }
 
-#[derive(Clone, Copy)]
 struct IntVisitor<'de, T>(PhantomData<&'de T>);
-
-enum IntVisitorValue<'de> {
-    Fixnum(Fixnum),
-    Bignum(Bignum),
-    BignumRef(BignumRef<'de>),
-}
 
 impl<'de, T> Visitor<'de> for IntVisitor<'de, T>
 where
-    T: std::fmt::Display + num_traits::Bounded,
+    T: std::fmt::Display + num_traits::Bounded + NumCast,
 {
-    type Value = IntVisitorValue<'de>;
+    type Value = T;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let min = T::min_value();
@@ -61,50 +54,53 @@ where
     }
 
     fn visit_fixnum(self, v: Fixnum) -> Result<Self::Value> {
-        Ok(IntVisitorValue::Fixnum(v))
+        T::from(v).ok_or(Error::invalid_value(Unexpected::Fixnum(v), &self))
     }
 
     fn visit_bignum(self, v: BignumRef<'de>) -> Result<Self::Value> {
-        Ok(IntVisitorValue::BignumRef(v))
+        T::from(v).ok_or(Error::invalid_value(Unexpected::Bignum(v), &self))
     }
 
     fn visit_f64(self, v: f64) -> Result<Self::Value> {
-        if let Some(fixnum) = FromPrimitive::from_f64(v) {
-            self.visit_fixnum(fixnum)
-        } else {
-            Ok(IntVisitorValue::Bignum(FromPrimitive::from_f64(v).ok_or(
-                Error::invalid_value(Unexpected::Float(v), &self),
-            )?))
-        }
+        T::from(v).ok_or(Error::invalid_value(Unexpected::Float(v), &self))
     }
 }
 
 macro_rules! primitive_int_impl {
-    ($($primitive:ty => $to_primitive:ident),* $(,)?) => {
+    ($($primitive:ty),* $(,)?) => {
         $(impl<'de> Deserialize<'de> for $primitive {
             fn deserialize<D>(deserializer: D) -> Result<Self>
             where
                 D: DeserializerTrait<'de>,
             {
-                let visitor = IntVisitor::<'de, $primitive>(PhantomData);
-                match deserializer.deserialize(visitor)? {
-                    IntVisitorValue::Fixnum(v) => v.$to_primitive().ok_or(Error::invalid_value(Unexpected::Fixnum(v), &visitor)),
-                    IntVisitorValue::Bignum(v) => v.$to_primitive().ok_or(Error::invalid_value(Unexpected::Bignum(v.as_ref()), &visitor)),
-                    IntVisitorValue::BignumRef(v) => v.$to_primitive().ok_or(Error::invalid_value(Unexpected::Bignum(v), &visitor)),
-                }
+                deserializer.deserialize(IntVisitor::<'de, $primitive>(PhantomData))
             }
         })*
     };
 }
 
-#[derive(Clone, Copy)]
+primitive_int_impl! {
+    u8,
+    u16,
+    u32,
+    u64,
+    u128,
+    usize,
+    i8,
+    i16,
+    i32,
+    i64,
+    i128,
+    isize,
+}
+
 struct NonZeroIntVisitor<'de, T>(PhantomData<&'de T>);
 
 impl<'de, T> Visitor<'de> for NonZeroIntVisitor<'de, T>
 where
-    T: std::fmt::Display + num_traits::Bounded,
+    T: std::fmt::Display + num_traits::Bounded + NumCast,
 {
-    type Value = IntVisitorValue<'de>;
+    type Value = T;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let min = T::min_value();
@@ -116,77 +112,50 @@ where
     }
 
     fn visit_fixnum(self, v: Fixnum) -> Result<Self::Value> {
-        if v == 0i16.into() {
-            Err(Error::invalid_value(Unexpected::Fixnum(v), &self))
-        } else {
-            Ok(IntVisitorValue::Fixnum(v))
-        }
+        (v != 0i16.into())
+            .then(|| T::from(v))
+            .flatten()
+            .ok_or_else(|| Error::invalid_value(Unexpected::Fixnum(v), &self))
     }
 
     fn visit_bignum(self, v: BignumRef<'de>) -> Result<Self::Value> {
-        Ok(IntVisitorValue::BignumRef(v))
+        T::from(v).ok_or(Error::invalid_value(Unexpected::Bignum(v), &self))
     }
 
     fn visit_f64(self, v: f64) -> Result<Self::Value> {
-        if let Some(fixnum) = FromPrimitive::from_f64(v) {
-            self.visit_fixnum(fixnum)
-        } else {
-            Ok(IntVisitorValue::Bignum(FromPrimitive::from_f64(v).ok_or(
-                Error::invalid_value(Unexpected::Float(v), &self),
-            )?))
-        }
+        (v != 0.)
+            .then(|| T::from(v))
+            .flatten()
+            .ok_or_else(|| Error::invalid_value(Unexpected::Float(v), &self))
     }
 }
 
-primitive_int_impl!(
-    u8 => to_u8,
-    u16 => to_u16,
-    u32 => to_u32,
-    u64 => to_u64,
-    u128 => to_u128,
-    usize => to_usize,
-    i8 => to_i8,
-    i16 => to_i16,
-    i32 => to_i32,
-    i64 => to_i64,
-    i128 => to_i128,
-    isize => to_isize,
-);
-
 macro_rules! nonzero_int_impl {
-    ($($nonzero_primitive:ty | $primitive:ty => $to_primitive:ident),* $(,)?) => {
+    ($($primitive:ty => $nonzero_primitive:ty),* $(,)?) => {
         $(impl<'de> Deserialize<'de> for $nonzero_primitive {
             fn deserialize<D>(deserializer: D) -> Result<Self>
             where
                 D: DeserializerTrait<'de>,
             {
-                let visitor = NonZeroIntVisitor::<'de, $primitive>(PhantomData);
-                let i = match deserializer.deserialize(visitor)? {
-                    IntVisitorValue::Fixnum(v) => v.$to_primitive().ok_or(Error::invalid_value(Unexpected::Fixnum(v), &visitor)),
-                    IntVisitorValue::Bignum(v) => v.$to_primitive().ok_or(Error::invalid_value(Unexpected::Bignum(v.as_ref()), &visitor)),
-                    IntVisitorValue::BignumRef(v) => v.$to_primitive().ok_or(Error::invalid_value(Unexpected::Bignum(v), &visitor)),
-                }?;
-                // we've already asserted that it's non-zero simply by the fact that NonZeroIntVisitor returns a nonzero integer.
-                // so this new_unchecked is safe
-                Ok(unsafe { <$nonzero_primitive>::new_unchecked(i) })
+                Ok(deserializer.deserialize(IntVisitor::<'de, $primitive>(PhantomData))?.try_into().unwrap())
             }
         })*
     };
 }
 
 nonzero_int_impl!(
-    NonZeroU8 | u8 => to_u8,
-    NonZeroU16 | u16 => to_u16,
-    NonZeroU32 | u32 => to_u32,
-    NonZeroU64 | u64 => to_u64,
-    NonZeroU128 | u128 => to_u128,
-    NonZeroUsize | usize => to_usize,
-    NonZeroI8 | i8 => to_i8,
-    NonZeroI16 | i16 => to_i16,
-    NonZeroI32 | i32 => to_i32,
-    NonZeroI64 | i64 => to_i64,
-    NonZeroI128 | i128 => to_i128,
-    NonZeroIsize | isize => to_isize,
+    u8 => NonZeroU8,
+    u16 => NonZeroU16,
+    u32 => NonZeroU32,
+    u64 => NonZeroU64,
+    u128 => NonZeroU128,
+    usize => NonZeroUsize,
+    i8 => NonZeroI8,
+    i16 => NonZeroI16,
+    i32 => NonZeroI32,
+    i64 => NonZeroI64,
+    i128 => NonZeroI128,
+    isize => NonZeroIsize,
 );
 
 struct UnitVisitor;

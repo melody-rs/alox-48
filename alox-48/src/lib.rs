@@ -59,7 +59,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-pub use num_traits::{FromPrimitive, ToPrimitive};
+pub use num_traits::{cast::cast, FromPrimitive, NumCast, ToPrimitive};
 
 /// A convenience module for getting exact details about where an error occurred.
 pub mod path_to_error;
