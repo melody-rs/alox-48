@@ -122,43 +122,19 @@ impl From<&Bignum> for num_bigint::BigInt {
 
 impl num_traits::FromPrimitive for Bignum {
     fn from_i64(n: i64) -> Option<Self> {
-        let (is_negative, le_bytes) = super::canonicalize_le_bytes_vec(
-            n.is_negative(),
-            n.wrapping_abs().to_le_bytes().to_vec(),
-        );
-        crate::Fixnum::from_i64(n).is_none().then_some(Self {
-            is_negative,
-            le_bytes,
-        })
+        Self::from_le_bytes(n.is_negative(), n.wrapping_abs().to_le_bytes().to_vec())
     }
 
     fn from_i128(n: i128) -> Option<Self> {
-        let (is_negative, le_bytes) = super::canonicalize_le_bytes_vec(
-            n.is_negative(),
-            n.wrapping_abs().to_le_bytes().to_vec(),
-        );
-        crate::Fixnum::from_i128(n).is_none().then_some(Self {
-            is_negative,
-            le_bytes,
-        })
+        Self::from_le_bytes(n.is_negative(), n.wrapping_abs().to_le_bytes().to_vec())
     }
 
     fn from_u64(n: u64) -> Option<Self> {
-        let (is_negative, le_bytes) =
-            super::canonicalize_le_bytes_vec(false, n.to_le_bytes().to_vec());
-        crate::Fixnum::from_u64(n).is_none().then_some(Self {
-            is_negative,
-            le_bytes,
-        })
+        Self::from_le_bytes(false, n.to_le_bytes().to_vec())
     }
 
     fn from_u128(n: u128) -> Option<Self> {
-        let (is_negative, le_bytes) =
-            super::canonicalize_le_bytes_vec(false, n.to_le_bytes().to_vec());
-        crate::Fixnum::from_u128(n).is_none().then_some(Self {
-            is_negative,
-            le_bytes,
-        })
+        Self::from_le_bytes(false, n.to_le_bytes().to_vec())
     }
 
     fn from_f64(n: f64) -> Option<Self> {
