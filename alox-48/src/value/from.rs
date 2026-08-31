@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::Instance;
+use crate::{FromPrimitive, Instance, ToPrimitive};
 
 use super::{Object, RbHash, RbString, Symbol, Userdata, Value};
 
@@ -79,10 +79,10 @@ macro_rules! from_primitive_int_impl {
     ($($primitive:ty => $from_primitive:ident),* $(,)?) => {
         $(impl From<$primitive> for Value {
             fn from(value: $primitive) -> Self {
-                if let Some(fixnum) = num_traits::FromPrimitive::$from_primitive(value) {
+                if let Some(fixnum) = FromPrimitive::$from_primitive(value) {
                     Self::Fixnum(fixnum)
                 } else {
-                    Self::Bignum(num_traits::FromPrimitive::$from_primitive(value).unwrap())
+                    Self::Bignum(FromPrimitive::$from_primitive(value).unwrap())
                 }
             }
         })*
@@ -143,10 +143,10 @@ macro_rules! to_primitive_int_impl {
 
             fn try_into(self) -> Result<$primitive, Self::Error> {
                 match self.into_fixnum() {
-                    Ok(fixnum) => num_traits::ToPrimitive::$to_primitive(&fixnum).ok_or(Value::Fixnum(fixnum)),
+                    Ok(fixnum) => fixnum.$to_primitive().ok_or(Value::Fixnum(fixnum)),
                     Err(value) => {
                         let bignum = value.into_bignum()?;
-                        num_traits::ToPrimitive::$to_primitive(&bignum).ok_or(Value::Bignum(bignum))
+                        bignum.$to_primitive().ok_or(Value::Bignum(bignum))
                     }
                 }
             }

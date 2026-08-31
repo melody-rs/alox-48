@@ -4,6 +4,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::{FromPrimitive, ToPrimitive};
+
 /// A type representing an integer within the interval [-2<sup>30</sup>, 2<sup>30</sup>).
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Fixnum(i32);
@@ -23,7 +25,7 @@ impl Fixnum {
                     value
                 };
                 (value.is_negative() == is_negative)
-                    .then(|| num_traits::FromPrimitive::from_i32(value))
+                    .then(|| FromPrimitive::from_i32(value))
                     .flatten()
             })
             .flatten()
@@ -78,7 +80,7 @@ impl From<Fixnum> for num_bigint::BigInt {
     }
 }
 
-impl num_traits::FromPrimitive for Fixnum {
+impl FromPrimitive for Fixnum {
     fn from_i64(n: i64) -> Option<Self> {
         if (-(1 << 30)..1 << 30).contains(&n) {
             Some(Self(n as i32))
@@ -88,11 +90,11 @@ impl num_traits::FromPrimitive for Fixnum {
     }
 
     fn from_u64(n: u64) -> Option<Self> {
-        <u64 as num_traits::ToPrimitive>::to_i64(&n).and_then(Self::from_i64)
+        n.to_i64().and_then(Self::from_i64)
     }
 }
 
-impl num_traits::ToPrimitive for Fixnum {
+impl ToPrimitive for Fixnum {
     fn to_i64(&self) -> Option<i64> {
         self.0.to_i64()
     }

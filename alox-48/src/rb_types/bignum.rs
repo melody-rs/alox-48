@@ -4,6 +4,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::{FromPrimitive, ToPrimitive};
+
 /// A type representing a borrowed arbitrary-precision integer outside of the interval
 /// [-2<sup>30</sup>, 2<sup>30</sup>).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -52,8 +54,9 @@ impl<'a> BignumRef<'a> {
             is_negative,
             le_bytes,
         };
-        num_traits::ToPrimitive::to_i32(&value)
-            .is_none_or(|int| <crate::Fixnum as num_traits::FromPrimitive>::from_i32(int).is_none())
+        value
+            .to_i32()
+            .is_none_or(|int| crate::Fixnum::from_i32(int).is_none())
             .then_some(value)
     }
 
@@ -73,8 +76,9 @@ impl Bignum {
             is_negative,
             le_bytes,
         };
-        num_traits::ToPrimitive::to_i32(&value)
-            .is_none_or(|int| <crate::Fixnum as num_traits::FromPrimitive>::from_i32(int).is_none())
+        value
+            .to_i32()
+            .is_none_or(|int| crate::Fixnum::from_i32(int).is_none())
             .then_some(value)
     }
 
@@ -120,7 +124,7 @@ impl From<&Bignum> for num_bigint::BigInt {
     }
 }
 
-impl num_traits::FromPrimitive for Bignum {
+impl FromPrimitive for Bignum {
     fn from_i64(n: i64) -> Option<Self> {
         Self::from_le_bytes(n.is_negative(), n.wrapping_abs().to_le_bytes().to_vec())
     }
@@ -154,7 +158,7 @@ impl num_traits::FromPrimitive for Bignum {
     }
 }
 
-impl num_traits::ToPrimitive for BignumRef<'_> {
+impl ToPrimitive for BignumRef<'_> {
     fn to_i64(&self) -> Option<i64> {
         (self.le_bytes.len() <= size_of::<i64>())
             .then(|| {
@@ -200,7 +204,7 @@ impl num_traits::ToPrimitive for BignumRef<'_> {
             f64::INFINITY
         } else {
             let mantissa = u64::from_le_bytes(super::to_array_with_default(mantissa_le_bytes));
-            num_traits::ToPrimitive::to_f64(&mantissa).unwrap() * 2.0f64.powi(8 * shift as i32)
+            mantissa.to_f64().unwrap() * 2.0f64.powi(8 * shift as i32)
         };
         Some(if self.is_negative {
             -value_unsigned
@@ -210,7 +214,7 @@ impl num_traits::ToPrimitive for BignumRef<'_> {
     }
 }
 
-impl num_traits::ToPrimitive for Bignum {
+impl ToPrimitive for Bignum {
     fn to_i64(&self) -> Option<i64> {
         self.as_ref().to_i64()
     }

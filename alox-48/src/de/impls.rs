@@ -20,7 +20,7 @@ use super::{
     traits::VisitorOption, ArrayAccess, Deserialize, DeserializeSeed, DeserializerTrait, Error,
     HashAccess, Result, Unexpected, Visitor,
 };
-use crate::{Bignum, BignumRef, Fixnum, Sym};
+use crate::{Bignum, BignumRef, Fixnum, FromPrimitive, Sym, ToPrimitive};
 
 impl<'de, T> DeserializeSeed<'de> for PhantomData<T>
 where
@@ -69,13 +69,12 @@ where
     }
 
     fn visit_f64(self, v: f64) -> Result<Self::Value> {
-        if let Some(fixnum) = num_traits::FromPrimitive::from_f64(v) {
+        if let Some(fixnum) = FromPrimitive::from_f64(v) {
             self.visit_fixnum(fixnum)
         } else {
-            Ok(IntVisitorValue::Bignum(
-                num_traits::FromPrimitive::from_f64(v)
-                    .ok_or(Error::invalid_value(Unexpected::Float(v), &self))?,
-            ))
+            Ok(IntVisitorValue::Bignum(FromPrimitive::from_f64(v).ok_or(
+                Error::invalid_value(Unexpected::Float(v), &self),
+            )?))
         }
     }
 }
@@ -89,9 +88,9 @@ macro_rules! primitive_int_impl {
             {
                 let visitor = IntVisitor::<'de, $primitive>(PhantomData);
                 match deserializer.deserialize(visitor)? {
-                    IntVisitorValue::Fixnum(v) => num_traits::ToPrimitive::$to_primitive(&v).ok_or(Error::invalid_value(Unexpected::Fixnum(v), &visitor)),
-                    IntVisitorValue::Bignum(v) => num_traits::ToPrimitive::$to_primitive(&v).ok_or(Error::invalid_value(Unexpected::Bignum(v.as_ref()), &visitor)),
-                    IntVisitorValue::BignumRef(v) => num_traits::ToPrimitive::$to_primitive(&v).ok_or(Error::invalid_value(Unexpected::Bignum(v), &visitor)),
+                    IntVisitorValue::Fixnum(v) => v.$to_primitive().ok_or(Error::invalid_value(Unexpected::Fixnum(v), &visitor)),
+                    IntVisitorValue::Bignum(v) => v.$to_primitive().ok_or(Error::invalid_value(Unexpected::Bignum(v.as_ref()), &visitor)),
+                    IntVisitorValue::BignumRef(v) => v.$to_primitive().ok_or(Error::invalid_value(Unexpected::Bignum(v), &visitor)),
                 }
             }
         })*
@@ -129,13 +128,12 @@ where
     }
 
     fn visit_f64(self, v: f64) -> Result<Self::Value> {
-        if let Some(fixnum) = num_traits::FromPrimitive::from_f64(v) {
+        if let Some(fixnum) = FromPrimitive::from_f64(v) {
             self.visit_fixnum(fixnum)
         } else {
-            Ok(IntVisitorValue::Bignum(
-                num_traits::FromPrimitive::from_f64(v)
-                    .ok_or(Error::invalid_value(Unexpected::Float(v), &self))?,
-            ))
+            Ok(IntVisitorValue::Bignum(FromPrimitive::from_f64(v).ok_or(
+                Error::invalid_value(Unexpected::Float(v), &self),
+            )?))
         }
     }
 }
@@ -164,9 +162,9 @@ macro_rules! nonzero_int_impl {
             {
                 let visitor = NonZeroIntVisitor::<'de, $primitive>(PhantomData);
                 let i = match deserializer.deserialize(visitor)? {
-                    IntVisitorValue::Fixnum(v) => num_traits::ToPrimitive::$to_primitive(&v).ok_or(Error::invalid_value(Unexpected::Fixnum(v), &visitor)),
-                    IntVisitorValue::Bignum(v) => num_traits::ToPrimitive::$to_primitive(&v).ok_or(Error::invalid_value(Unexpected::Bignum(v.as_ref()), &visitor)),
-                    IntVisitorValue::BignumRef(v) => num_traits::ToPrimitive::$to_primitive(&v).ok_or(Error::invalid_value(Unexpected::Bignum(v), &visitor)),
+                    IntVisitorValue::Fixnum(v) => v.$to_primitive().ok_or(Error::invalid_value(Unexpected::Fixnum(v), &visitor)),
+                    IntVisitorValue::Bignum(v) => v.$to_primitive().ok_or(Error::invalid_value(Unexpected::Bignum(v.as_ref()), &visitor)),
+                    IntVisitorValue::BignumRef(v) => v.$to_primitive().ok_or(Error::invalid_value(Unexpected::Bignum(v), &visitor)),
                 }?;
                 // we've already asserted that it's non-zero simply by the fact that NonZeroIntVisitor returns a nonzero integer.
                 // so this new_unchecked is safe

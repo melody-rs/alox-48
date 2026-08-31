@@ -4,6 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::{Bignum, Fixnum, Object, RbArray, RbHash, RbString, Symbol, Userdata, Value};
+use crate::FromPrimitive;
 
 impl PartialEq for Value {
     #[allow(clippy::too_many_lines)]
@@ -181,8 +182,8 @@ macro_rules! primitive_int_impl {
         $(impl PartialEq<$primitive> for Value {
             fn eq(&self, other: &$primitive) -> bool {
                 match self {
-                    Value::Fixnum(v) => <Fixnum as num_traits::FromPrimitive>::$from_primitive(*other).is_some_and(|other| other == *v),
-                    Value::Bignum(v) => <Bignum as num_traits::FromPrimitive>::$from_primitive(*other).is_some_and(|other| other == *v),
+                    Value::Fixnum(v) => Fixnum::$from_primitive(*other).is_some_and(|other| other == *v),
+                    Value::Bignum(v) => Bignum::$from_primitive(*other).is_some_and(|other| other == *v),
                     _ => false,
                 }
             }

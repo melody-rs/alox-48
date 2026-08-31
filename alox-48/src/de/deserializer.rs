@@ -10,7 +10,7 @@
 #![allow(clippy::cast_lossless)]
 
 use super::{ignored::Ignored, DeserializeSeed, Error, Kind, Result};
-use crate::{tag::Tag, BignumRef, Deserialize, Fixnum, Sym, Visitor};
+use crate::{tag::Tag, BignumRef, Deserialize, Fixnum, FromPrimitive, Sym, Visitor};
 
 /// The alox-48 deserializer.
 #[derive(Debug, Clone)]
@@ -188,7 +188,7 @@ impl<'de> Deserializer<'de> {
                     x |= n;
                 }
 
-                num_traits::FromPrimitive::from_i32(x).unwrap()
+                FromPrimitive::from_i32(x).unwrap()
             }
             -4..=-1 => {
                 let mut x = -1;
@@ -201,7 +201,7 @@ impl<'de> Deserializer<'de> {
                     x = (x & a) | b;
                 }
 
-                num_traits::FromPrimitive::from_i32(x).unwrap()
+                FromPrimitive::from_i32(x).unwrap()
             }
         })
     }

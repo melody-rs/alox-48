@@ -1,7 +1,6 @@
 #![allow(dead_code, missing_docs)]
 
-use alox_48::{Bignum, Deserialize, Fixnum};
-use num_traits::ToPrimitive;
+use alox_48::{Bignum, Deserialize, Fixnum, ToPrimitive};
 
 #[derive(Debug, Deserialize)]
 pub struct Color {

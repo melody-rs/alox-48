@@ -8,7 +8,7 @@
 use indexmap::IndexSet;
 
 use super::{Error, Kind, Result};
-use crate::{tag::Tag, BignumRef, Fixnum, Sym, Symbol};
+use crate::{tag::Tag, BignumRef, Fixnum, FromPrimitive, Sym, Symbol};
 
 /// The `alox_48` serializer.
 #[derive(Debug, Clone)]
@@ -99,7 +99,7 @@ impl Serializer {
     }
 
     fn write_usize(&mut self, v: usize) -> Result<()> {
-        self.write_fixnum(num_traits::FromPrimitive::from_usize(v).ok_or(Error {
+        self.write_fixnum(FromPrimitive::from_usize(v).ok_or(Error {
             kind: Kind::LenOverflow(v),
         })?);
         Ok(())

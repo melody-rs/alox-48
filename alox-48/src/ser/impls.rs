@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::{Error, Kind, Result, Serialize, SerializeArray, SerializerTrait};
-use crate::Bignum;
+use crate::{Bignum, FromPrimitive};
 use std::{
     cell::{Cell, RefCell},
     collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque},
@@ -29,10 +29,10 @@ macro_rules! primitive_int_impl {
             where
                 S: SerializerTrait
             {
-                if let Some(fixnum) = num_traits::FromPrimitive::$from_primitive(*self) {
+                if let Some(fixnum) = FromPrimitive::$from_primitive(*self) {
                     serializer.serialize_fixnum(fixnum)
                 } else {
-                    let bignum: Bignum = num_traits::FromPrimitive::$from_primitive(*self).unwrap();
+                    let bignum: Bignum = FromPrimitive::$from_primitive(*self).unwrap();
                     serializer.serialize_bignum(bignum.as_ref())
                 }
             }

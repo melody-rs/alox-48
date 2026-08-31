@@ -59,6 +59,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+pub use num_traits::{FromPrimitive, ToPrimitive};
+
 /// A convenience module for getting exact details about where an error occurred.
 pub mod path_to_error;
 
@@ -131,8 +133,7 @@ where
 
 #[cfg(test)]
 mod fixnum {
-    use crate::{int_to_le_bytes, Fixnum};
-    use num_traits::{FromPrimitive, ToPrimitive};
+    use crate::{int_to_le_bytes, Fixnum, FromPrimitive, ToPrimitive};
 
     #[test]
     fn i64_positive() {
@@ -258,8 +259,7 @@ mod fixnum {
 
 #[cfg(test)]
 mod bignum {
-    use crate::{int_to_le_bytes, Bignum};
-    use num_traits::{FromPrimitive, ToPrimitive};
+    use crate::{int_to_le_bytes, Bignum, FromPrimitive, ToPrimitive};
 
     #[test]
     fn i64_positive() {
@@ -962,7 +962,7 @@ mod value_test {
 
 #[cfg(test)]
 mod round_trip {
-    use crate::{from_bytes, to_bytes, Instance, RbFields, RbHash, RbStruct, Value};
+    use crate::{from_bytes, to_bytes, FromPrimitive, Instance, RbFields, RbHash, RbStruct, Value};
 
     #[test]
     fn nil() {
@@ -1010,8 +1010,7 @@ mod round_trip {
 
     #[test]
     fn integer_bignum_positive_even_length() {
-        let original =
-            Value::Bignum(num_traits::FromPrimitive::from_i64(0x1122334455667788).unwrap());
+        let original = Value::Bignum(FromPrimitive::from_i64(0x1122334455667788).unwrap());
 
         let bytes = to_bytes(&original).unwrap();
 
@@ -1022,8 +1021,7 @@ mod round_trip {
 
     #[test]
     fn integer_bignum_negative_even_length() {
-        let original =
-            Value::Bignum(num_traits::FromPrimitive::from_i64(-0x1122334455667788).unwrap());
+        let original = Value::Bignum(FromPrimitive::from_i64(-0x1122334455667788).unwrap());
 
         let bytes = to_bytes(&original).unwrap();
 
@@ -1034,8 +1032,7 @@ mod round_trip {
 
     #[test]
     fn integer_bignum_positive_odd_length() {
-        let original =
-            Value::Bignum(num_traits::FromPrimitive::from_i64(0x11223344556677).unwrap());
+        let original = Value::Bignum(FromPrimitive::from_i64(0x11223344556677).unwrap());
 
         let bytes = to_bytes(&original).unwrap();
 
@@ -1046,8 +1043,7 @@ mod round_trip {
 
     #[test]
     fn integer_bignum_negative_odd_length() {
-        let original =
-            Value::Bignum(num_traits::FromPrimitive::from_i64(-0x11223344556677).unwrap());
+        let original = Value::Bignum(FromPrimitive::from_i64(-0x11223344556677).unwrap());
 
         let bytes = to_bytes(&original).unwrap();
 
