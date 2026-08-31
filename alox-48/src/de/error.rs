@@ -25,7 +25,7 @@ pub struct Error {
 #[derive(Debug, thiserror::Error)]
 pub enum Kind {
     /// Unrecognized tag was encountered.
-    #[error("Wrong tag 0x{0:X} ({})", unknown_tag_to_char(*_0))]
+    #[error("Wrong tag 0x{0:X} ({tag})", tag = unknown_tag_to_char(*_0))]
     WrongTag(u8),
     /// A symbol was invalid utf8.
     /// All symbols in ruby should be valid.

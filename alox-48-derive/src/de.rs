@@ -164,7 +164,7 @@ fn parse_struct(
     let expecting_text = reciever
         .expecting
         .clone()
-        .unwrap_or_else(|| format!("an instance of {classname}",));
+        .unwrap_or_else(|| format!("an instance of {classname}"));
     let expecting_lit = LitStr::new(&expecting_text, ty.span());
 
     quote! {

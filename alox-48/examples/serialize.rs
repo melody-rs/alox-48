@@ -3,6 +3,7 @@ struct MyStruct {
     test: String,
 }
 
+#[allow(dead_code)]
 #[derive(alox_48::Deserialize, alox_48::Serialize, Debug)]
 struct Foo(String);
 

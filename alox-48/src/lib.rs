@@ -5,8 +5,7 @@
     missing_copy_implementations,
     clippy::panic,
     clippy::panic_in_result_fn,
-    clippy::panicking_unwrap,
-    clippy::all
+    clippy::panicking_unwrap
 )]
 #![allow(
     clippy::must_use_candidate,
@@ -137,34 +136,34 @@ mod fixnum {
 
     #[test]
     fn i64_positive() {
-        let int: i64 = 0x3fffffff;
+        let int: i64 = 0x3fff_ffff;
 
         let fixnum = Fixnum::from_i64(int).unwrap();
 
-        assert_eq!(int, fixnum.into())
+        assert_eq!(int, fixnum.into());
     }
 
     #[test]
     fn i64_negative() {
-        let int: i64 = -0x40000000;
+        let int: i64 = -0x4000_0000;
 
         let fixnum = Fixnum::from_i64(int).unwrap();
 
-        assert_eq!(int, fixnum.into())
+        assert_eq!(int, fixnum.into());
     }
 
     #[test]
     fn u64() {
-        let int: u64 = 0x3fffffff;
+        let int: u64 = 0x3fff_ffff;
 
         let fixnum = Fixnum::from_u64(int).unwrap();
 
-        assert_eq!(Some(int), fixnum.to_u64())
+        assert_eq!(Some(int), fixnum.to_u64());
     }
 
     #[test]
     fn from_le_bytes_positive() {
-        let int: i64 = 0x3fffffff;
+        let int: i64 = 0x3fff_ffff;
         let (is_negative, le_bytes) = int_to_le_bytes(int);
 
         let fixnum = Fixnum::from_le_bytes(is_negative, &le_bytes).unwrap();
@@ -174,7 +173,7 @@ mod fixnum {
 
     #[test]
     fn from_le_bytes_negative() {
-        let int: i64 = -0x40000000;
+        let int: i64 = -0x4000_0000;
         let (is_negative, le_bytes) = int_to_le_bytes(int);
 
         let fixnum = Fixnum::from_le_bytes(is_negative, &le_bytes).unwrap();
@@ -184,28 +183,28 @@ mod fixnum {
 
     #[test]
     fn i64_positive_out_of_range() {
-        let int: i64 = 0x40000000;
+        let int: i64 = 0x4000_0000;
 
         assert!(Fixnum::from_i64(int).is_none());
     }
 
     #[test]
     fn i64_negative_out_of_range() {
-        let int: i64 = -0x40000001;
+        let int: i64 = -0x4000_0001;
 
         assert!(Fixnum::from_i64(int).is_none());
     }
 
     #[test]
     fn u64_out_of_range() {
-        let int: u64 = 0x40000000;
+        let int: u64 = 0x4000_0000;
 
         assert!(Fixnum::from_u64(int).is_none());
     }
 
     #[test]
     fn from_le_bytes_positive_out_of_range() {
-        let int: i64 = 0x40000000;
+        let int: i64 = 0x4000_0000;
         let (is_negative, le_bytes) = int_to_le_bytes(int);
 
         assert!(Fixnum::from_le_bytes(is_negative, &le_bytes).is_none());
@@ -213,7 +212,7 @@ mod fixnum {
 
     #[test]
     fn from_le_bytes_negative_out_of_range() {
-        let int: i64 = -0x40000001;
+        let int: i64 = -0x4000_0001;
         let (is_negative, le_bytes) = int_to_le_bytes(int);
 
         assert!(Fixnum::from_le_bytes(is_negative, &le_bytes).is_none());
@@ -263,7 +262,7 @@ mod bignum {
 
     #[test]
     fn i64_positive() {
-        let int: i64 = 0x40000000;
+        let int: i64 = 0x4000_0000;
 
         let bignum = Bignum::from_i64(int).unwrap();
 
@@ -272,7 +271,7 @@ mod bignum {
 
     #[test]
     fn i64_negative() {
-        let int: i64 = -0x40000001;
+        let int: i64 = -0x4000_0001;
 
         let bignum = Bignum::from_i64(int).unwrap();
 
@@ -281,7 +280,7 @@ mod bignum {
 
     #[test]
     fn u64() {
-        let int: u64 = 0x40000000;
+        let int: u64 = 0x4000_0000;
 
         let bignum = Bignum::from_u64(int).unwrap();
 
@@ -317,7 +316,7 @@ mod bignum {
 
     #[test]
     fn i128_positive() {
-        let int: i128 = 0x40000000;
+        let int: i128 = 0x4000_0000;
 
         let bignum = Bignum::from_i128(int).unwrap();
 
@@ -326,7 +325,7 @@ mod bignum {
 
     #[test]
     fn i128_negative() {
-        let int: i128 = -0x40000001;
+        let int: i128 = -0x4000_0001;
 
         let bignum = Bignum::from_i128(int).unwrap();
 
@@ -335,7 +334,7 @@ mod bignum {
 
     #[test]
     fn u128() {
-        let int: u128 = 0x40000000;
+        let int: u128 = 0x4000_0000;
 
         let bignum = Bignum::from_u128(int).unwrap();
 
@@ -371,7 +370,7 @@ mod bignum {
 
     #[test]
     fn f64_positive() {
-        let int: f64 = 0x40000000 as _;
+        let int: f64 = 0x4000_0000 as _;
 
         let bignum = Bignum::from_f64(int).unwrap();
 
@@ -380,7 +379,7 @@ mod bignum {
 
     #[test]
     fn f64_negative() {
-        let int: f64 = -0x40000001 as _;
+        let int: f64 = -0x4000_0001 as _;
 
         let bignum = Bignum::from_f64(int).unwrap();
 
@@ -411,7 +410,7 @@ mod bignum {
 
         let bignum = Bignum::from_u128(int).unwrap();
 
-        assert_eq!(Some(3.402823669209385e38), bignum.to_f64());
+        assert_eq!(Some(3.402_823_669_209_385e38), bignum.to_f64());
     }
 
     #[test]
@@ -437,7 +436,7 @@ mod bignum {
 
     #[test]
     fn as_le_bytes_positive() {
-        let int: i128 = 0x4d3c2b1a;
+        let int: i128 = 0x4d3c_2b1a;
         let (is_negative, le_bytes) = int_to_le_bytes(int);
 
         let bignum = Bignum::from_le_bytes(is_negative, le_bytes.to_vec()).unwrap();
@@ -461,7 +460,7 @@ mod bignum {
 
     #[test]
     fn as_le_bytes_negative() {
-        let int: i128 = -0x4d3c2b1a;
+        let int: i128 = -0x4d3c_2b1a;
         let (is_negative, le_bytes) = int_to_le_bytes(int);
 
         let bignum = Bignum::from_le_bytes(is_negative, le_bytes.to_vec()).unwrap();
@@ -485,8 +484,8 @@ mod bignum {
 
     #[test]
     fn ord_differing_sign() {
-        let int1: i64 = -0xffffffffffff;
-        let int2: i64 = 0x0000ffffffff;
+        let int1: i64 = -0xffff_ffff_ffff;
+        let int2: i64 = 0x0000_ffff_ffff;
 
         let bignum1 = Bignum::from_i64(int1);
         let bignum2 = Bignum::from_i64(int2);
@@ -496,8 +495,8 @@ mod bignum {
 
     #[test]
     fn ord_same_sign_differing_length() {
-        let int1: i64 = 0x0000ffffffff;
-        let int2: i64 = 0xffffffffffff;
+        let int1: i64 = 0x0000_ffff_ffff;
+        let int2: i64 = 0xffff_ffff_ffff;
 
         let bignum1 = Bignum::from_i64(int1);
         let bignum2 = Bignum::from_i64(int2);
@@ -507,8 +506,8 @@ mod bignum {
 
     #[test]
     fn ord_same_sign_same_length() {
-        let int1: i64 = 0xfffffffffffe;
-        let int2: i64 = 0xffffffffffff;
+        let int1: i64 = 0xffff_ffff_fffe;
+        let int2: i64 = 0xffff_ffff_ffff;
 
         let bignum1 = Bignum::from_i64(int1);
         let bignum2 = Bignum::from_i64(int2);
@@ -518,8 +517,8 @@ mod bignum {
 
     #[test]
     fn equality_differing_length() {
-        let int1: i64 = 0x40000000;
-        let int2: i128 = 0x40000000;
+        let int1: i64 = 0x4000_0000;
+        let int2: i128 = 0x4000_0000;
 
         let bignum1 = Bignum::from_i64(int1);
         let bignum2 = Bignum::from_i128(int2);
@@ -552,7 +551,7 @@ mod ints {
 
     #[test]
     fn round_trip_bignum_positive_even_length() {
-        let int: i64 = 0x1122334455667788;
+        let int: i64 = 0x1122_3344_5566_7788;
 
         let bytes = crate::to_bytes(int).unwrap();
 
@@ -563,7 +562,7 @@ mod ints {
 
     #[test]
     fn round_trip_bignum_negative_even_length() {
-        let int: i64 = -0x1122334455667788;
+        let int: i64 = -0x1122_3344_5566_7788;
 
         let bytes = crate::to_bytes(int).unwrap();
 
@@ -574,7 +573,7 @@ mod ints {
 
     #[test]
     fn round_trip_bignum_positive_odd_length() {
-        let int: i64 = 0x11223344556677;
+        let int: i64 = 0x0011_2233_4455_6677;
 
         let bytes = crate::to_bytes(int).unwrap();
 
@@ -585,7 +584,7 @@ mod ints {
 
     #[test]
     fn round_trip_bignum_negative_odd_length() {
-        let int: i64 = -0x11223344556677;
+        let int: i64 = -0x0011_2233_4455_6677;
 
         let bytes = crate::to_bytes(int).unwrap();
 
@@ -1010,7 +1009,7 @@ mod round_trip {
 
     #[test]
     fn integer_bignum_positive_even_length() {
-        let original = Value::Bignum(FromPrimitive::from_i64(0x1122334455667788).unwrap());
+        let original = Value::Bignum(FromPrimitive::from_i64(0x1122_3344_5566_7788).unwrap());
 
         let bytes = to_bytes(&original).unwrap();
 
@@ -1021,7 +1020,7 @@ mod round_trip {
 
     #[test]
     fn integer_bignum_negative_even_length() {
-        let original = Value::Bignum(FromPrimitive::from_i64(-0x1122334455667788).unwrap());
+        let original = Value::Bignum(FromPrimitive::from_i64(-0x1122_3344_5566_7788).unwrap());
 
         let bytes = to_bytes(&original).unwrap();
 
@@ -1032,7 +1031,7 @@ mod round_trip {
 
     #[test]
     fn integer_bignum_positive_odd_length() {
-        let original = Value::Bignum(FromPrimitive::from_i64(0x11223344556677).unwrap());
+        let original = Value::Bignum(FromPrimitive::from_i64(0x0011_2233_4455_6677).unwrap());
 
         let bytes = to_bytes(&original).unwrap();
 
@@ -1043,7 +1042,7 @@ mod round_trip {
 
     #[test]
     fn integer_bignum_negative_odd_length() {
-        let original = Value::Bignum(FromPrimitive::from_i64(-0x11223344556677).unwrap());
+        let original = Value::Bignum(FromPrimitive::from_i64(-0x0011_2233_4455_6677).unwrap());
 
         let bytes = to_bytes(&original).unwrap();
 
