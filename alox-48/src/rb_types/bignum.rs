@@ -44,6 +44,12 @@ impl<'a> From<BignumRef<'a>> for Bignum {
     }
 }
 
+impl<'a> From<&BignumRef<'a>> for Bignum {
+    fn from(value: &BignumRef<'a>) -> Self {
+        (*value).into()
+    }
+}
+
 impl<'a> BignumRef<'a> {
     /// Attempts to create a new [`BignumRef`] from a sign and little-endian bytes.
     /// Will fail if the represented integer is within the interval
@@ -58,6 +64,11 @@ impl<'a> BignumRef<'a> {
             .to_i32()
             .is_none_or(|int| crate::Fixnum::from_i32(int).is_none())
             .then_some(value)
+    }
+
+    /// Clones this object into a new [`Bignum`].
+    pub fn to_bignum(&self) -> Bignum {
+        self.into()
     }
 
     /// Returns the sign (true if negative, false if nonnegative) and little-endian bytes.
