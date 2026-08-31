@@ -164,7 +164,7 @@ impl<'de> Deserializer<'de> {
         self.cursor.input
     }
 
-    fn read_packed_int(&mut self) -> Result<i32> {
+    fn read_fixnum(&mut self) -> Result<Fixnum> {
         // The bounds of a Ruby Marshal packed integer are [-(2**30), 2**30 - 1], anything beyond that
         // gets serialized as a bignum.
         //
@@ -172,9 +172,9 @@ impl<'de> Deserializer<'de> {
         let c = self.cursor.next_byte()? as i8;
 
         Ok(match c {
-            0 => 0,
-            5..=127 => (c - 5) as _,
-            -128..=-5 => (c + 5) as _,
+            0 => 0i16.into(),
+            5..=127 => (c - 5).into(),
+            -128..=-5 => (c + 5).into(),
             1..=4 => {
                 let mut x = 0;
 
@@ -184,7 +184,7 @@ impl<'de> Deserializer<'de> {
                     x |= n;
                 }
 
-                x
+                num_traits::FromPrimitive::from_i32(x).unwrap()
             }
             -4..=-1 => {
                 let mut x = -1;
@@ -197,9 +197,13 @@ impl<'de> Deserializer<'de> {
                     x = (x & a) | b;
                 }
 
-                x
+                num_traits::FromPrimitive::from_i32(x).unwrap()
             }
         })
+    }
+
+    fn read_usize(&mut self) -> Result<usize> {
+        num_traits::ToPrimitive::to_usize(&self.read_fixnum()?).ok_or(Error { kind: Kind::Eof })
     }
 
     #[allow(clippy::panic_in_result_fn)]
@@ -246,7 +250,7 @@ impl<'de> Deserializer<'de> {
     }
 
     fn read_symlink(&mut self) -> Result<&'de Sym> {
-        let index = self.read_packed_int()? as usize;
+        let index = self.read_usize()?;
 
         self.sym_table.get(index).copied().ok_or(Error {
             kind: Kind::UnresolvedSymlink(index),
@@ -272,13 +276,6 @@ impl<'de> Deserializer<'de> {
             return;
         }
         self.objtable.push(self.cursor.position);
-    }
-
-    fn read_usize(&mut self) -> Result<usize> {
-        let raw_length = self.read_packed_int()?;
-        usize::try_from(raw_length).map_err(|_| Error {
-            kind: Kind::UnexpectedNegativeLength(raw_length),
-        })
     }
 
     fn read_bytes_len(&mut self) -> Result<&'de [u8]> {
@@ -312,14 +309,7 @@ impl<'de> super::DeserializerTrait<'de> for &mut Deserializer<'de> {
             Tag::Nil => visitor.visit_nil(),
             Tag::True => visitor.visit_bool(true),
             Tag::False => visitor.visit_bool(false),
-            Tag::Fixnum => visitor.visit_fixnum({
-                let int = self.read_packed_int()?;
-                num_traits::FromPrimitive::from_i32(int).ok_or_else(|| Error {
-                    kind: Kind::ParseFixnumOverflow(
-                        num_traits::FromPrimitive::from_i32(int).unwrap(),
-                    ),
-                })?
-            }),
+            Tag::Fixnum => visitor.visit_fixnum(self.read_fixnum()?),
             Tag::Float => visitor.visit_f64(self.read_float()?),
             Tag::Bignum => {
                 let is_negative = self.cursor.next_byte()? == b'-';
@@ -458,7 +448,7 @@ impl<'de> super::DeserializerTrait<'de> for &mut Deserializer<'de> {
             }
             // FIXME: this ignores default hash values. we should fix this?
             Tag::HashDefault => {
-                let len = self.read_packed_int()? as _;
+                let len = self.read_usize()?;
                 let mut index = 0;
 
                 let result = visitor.visit_hash(HashAccess {
@@ -518,7 +508,7 @@ impl<'de> super::DeserializerTrait<'de> for &mut Deserializer<'de> {
             Tag::Struct => {
                 let name = self.read_symbol_either()?;
 
-                let len = self.read_packed_int()? as _;
+                let len = self.read_usize()?;
                 let mut index = 0;
 
                 let result = visitor.visit_struct(

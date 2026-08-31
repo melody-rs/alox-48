@@ -7,7 +7,7 @@
 
 use std::str::Utf8Error;
 
-use crate::{tag::Tag, Bignum, BignumRef, Fixnum, Sym, Visitor};
+use crate::{tag::Tag, BignumRef, Fixnum, Sym, Visitor};
 
 /// Type alias around a result.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -24,9 +24,6 @@ pub struct Error {
 /// Error type for this crate.
 #[derive(Debug, thiserror::Error)]
 pub enum Kind {
-    /// A length was negative when it should not have been.
-    #[error("Unexpected negative length {0}")]
-    UnexpectedNegativeLength(i32),
     /// Unrecognized tag was encountered.
     #[error("Wrong tag 0x{0:X} ({})", unknown_tag_to_char(*_0))]
     WrongTag(u8),
@@ -43,9 +40,6 @@ pub enum Kind {
     /// A float's mantissa was too long.
     #[error("Float mantissa too long")]
     ParseFloatMantissaTooLong,
-    /// A fixnum could not be read because it was outside of the interval [-2<sup>30</sup>, 2<sup>30</sup>).
-    #[error("Failed to parse {0} as a fixnum")]
-    ParseFixnumOverflow(Bignum),
     /// A float could not be converted to an integer because it was infinite or NaN.
     #[error("Tried to interpret a nonfinite float as an int")]
     InvalidFloatToIntConversion,
