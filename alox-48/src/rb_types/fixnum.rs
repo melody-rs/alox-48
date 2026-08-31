@@ -110,6 +110,37 @@ impl NumCast for Fixnum {
     }
 }
 
+macro_rules! try_from_impl {
+    ($($from:ty => $to:ty),* $(,)?) => {
+        $(impl TryFrom<$from> for $to {
+            type Error = $from;
+            fn try_from(value: $from) -> Result<Self, Self::Error> {
+                NumCast::from(value).ok_or(value)
+            }
+        })*
+    };
+}
+
+try_from_impl! {
+    i32 => Fixnum,
+    u32 => Fixnum,
+    i64 => Fixnum,
+    u64 => Fixnum,
+    i128 => Fixnum,
+    u128 => Fixnum,
+    isize => Fixnum,
+    usize => Fixnum,
+    Fixnum => i8,
+    Fixnum => u8,
+    Fixnum => i16,
+    Fixnum => u16,
+    Fixnum => u32,
+    Fixnum => u64,
+    Fixnum => u128,
+    Fixnum => isize,
+    Fixnum => usize,
+}
+
 impl num_bigint::ToBigInt for Fixnum {
     fn to_bigint(&self) -> Option<num_bigint::BigInt> {
         self.0.to_bigint()

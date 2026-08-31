@@ -261,6 +261,58 @@ impl NumCast for Bignum {
     }
 }
 
+macro_rules! try_from_impl {
+    ($($from:ty),* $(,)?) => {
+        $(impl TryFrom<$from> for Bignum {
+            type Error = $from;
+            fn try_from(value: $from) -> Result<Self, Self::Error> {
+                NumCast::from(value).ok_or(value)
+            }
+        })*
+    };
+}
+
+try_from_impl! {
+    i8,
+    u8,
+    i16,
+    u16,
+    i32,
+    u32,
+    i64,
+    u64,
+    i128,
+    u128,
+    isize,
+    usize,
+}
+
+macro_rules! try_into_impl {
+    ($($to:ty),* $(,)?) => {
+        $(impl<'a> TryFrom<BignumRef<'a>> for $to {
+            type Error = BignumRef<'a>;
+            fn try_from(value: BignumRef<'a>) -> Result<Self, Self::Error> {
+                NumCast::from(value).ok_or(value)
+            }
+        })*
+    };
+}
+
+try_into_impl! {
+    i8,
+    u8,
+    i16,
+    u16,
+    i32,
+    u32,
+    i64,
+    u64,
+    i128,
+    u128,
+    isize,
+    usize,
+}
+
 impl num_bigint::ToBigInt for BignumRef<'_> {
     fn to_bigint(&self) -> Option<num_bigint::BigInt> {
         Some(self.into())
