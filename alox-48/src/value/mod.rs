@@ -21,7 +21,7 @@ use crate::{
 /// Similar to `serde_json::Value`, although much more nuanced.
 #[derive(Default, Clone, enum_as_inner::EnumAsInner, Debug)]
 pub enum Value {
-    /// A value equivalent to nil in ruby (or [`()`] in rust.)
+    /// A value equivalent to nil in ruby (or [`unit`] in rust.)
     #[default]
     Nil,
     /// A boolean value.

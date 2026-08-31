@@ -23,34 +23,58 @@
 //! alox-48 supports both full serialization and deserialization of Marshal, but generally users of this library will not be using
 //! most of Marshal's features. (Classes, Extended types, etc)
 //!
-//! However, alox-48 does NOT support object links. Object links are marshal's way of saving space,
-//! if an object was serialized already a "link" indicating when it was serialized is serialized instead.
-//!
-//! ```rb
-//! class MyClass
-//!  def initialize
-//!    @var = 1
-//!    @string = "hiya!"
-//!  end
-//! end
-//!
-//! a = MyClass.new
-//! Marshal.dump([a, a, a])
-//! # The array here has 3 indices all "pointing" to the same object.
-//! # Instead of serializing MyClass 3 times, Marshal will serialize it once and replace the other 2 occurences with object links.
-//! # When deserializing, Marshal will preserve object links and all 3 elements in the array will point to the same object.
-//! # In alox-48, this is not the case. Each index will be a "unique" ""object"".
-//! ```
-//!
-//! This behavior could be simulated with `Rc` and/or `Arc` like `thurgood`, however for the sake of ergonomics (and memory cycles)
-//! alox-48 deserializes object links as copies instead. alox-48 does not serialize object links at all.
-//!
 //! Some common terminology:
 //! - ivar: Instance variable. These are variables that are attached to an object.
-//! - instance: Not to be confused with a class instance. This is a value that is not an object with attached ivars.
+//! - object reference: A shared reference to the same object.
+//! - instance: This is a builtin ruby object (strings, arrays, hashes, ints) with attached ivars.
 //! - userdata: A special type of object that is serialized by the `_dump` method.
-//! - userclass: A subclass of a ruby object like `Hash` or `Array`.
+//! - userclass: A subclass of a builtin ruby object like `Hash` or `Array`.
 //! - object: A generic ruby object. Can be anything from a string to an instance of a class.
+//! - bignum: An arbitrary precision integer. Always larger than ±2<sup>30</sup>.
+//! - fixnum: An integer smaller than ±2<sup>30</sup>.
+//!
+//! ### Object links
+//!
+//! Object links are used for compression and to represent reference cycles.
+//! If the same instance of an object shows up twice in Marshal, it'll instead be serialized as a pointer to the object.
+//!
+//! alox-48 does *not* support serializing object links.
+//!
+//! alox-48 *does* support deserializing object links when they aren't cyclic, the deserializer will wind back to
+//! where the object first appeared and deserialize it again, effectively copying the object.
+//! Reference cycles throw a deserializer error as this behavior would blow up the stack. (Rust isn't great at cyclic data structures anyway.)
+//!
+//! For example:
+//! ```rb
+//! str = "hello!"
+//! marsh = Marshal.dump([str, str, str])
+//! puts Marshal.load(marsh)
+//! ```
+//! Ruby would deserialize this as an array of 3 references to the same `"hello!"`.
+//!
+//! (`["hello!", ptr->"hello!", ptr->"hello!"]`)
+//!
+//! alox-48 would deserialize this as array of 3 unique strings.
+//!
+//! (`[String("hello!"), String("hello!"), String("hello!")]`)
+//!
+//! For most cases, this behavior is exactly what you want, but if you really need multiple references to the same object,
+//! a different crate might be better for you.
+//!
+//! This limitation may be lifted in the future, though!
+//!
+//! ### Bignums & Fixnums
+//!
+//! Marshal serializes any integer smaller than ±2<sup>30</sup> as a [`Fixnum`], which is just a plain `i32`.
+//! Larger integers are serialized as a [`Bignum`], which is an arbitrary precision integer.
+//! `alox-48` will automatically convert [`Bignum`]s and [`Fixnum`]s to normal Rust integer types, so generally you don't
+//! need to interact with them at all.
+//!
+//! *However*, array lengths, string lengths, and hash sizes are all serialized as [`Fixnum`]s. If you need to serialize an array
+//! with more than ±2<sup>30</sup> elements, you're out of luck :(
+//!
+//! Fortunately, this realistically only matters for byte arrays- any types larger than a `i64` are going to quickly take up more
+//! space than available RAM.
 
 // Copyright (c) 2024 Lily Lyons
 //

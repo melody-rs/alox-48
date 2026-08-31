@@ -6,7 +6,6 @@ alox-48 intends to provide almost perfect round-trip deserialization, with some 
 
 - Object links are not preserved.
     Object links are a way for Ruby to compact data in Marshal. They rely heavily on Ruby having a GC and thus do not map well to Rust.
-- Bignum is unsupported.
 
 # Why a custom data format
 
