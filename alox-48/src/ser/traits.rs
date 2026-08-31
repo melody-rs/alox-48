@@ -1,11 +1,11 @@
-use crate::Sym;
-
 // Copyright (c) 2024 Lily Lyons
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 use super::Result;
+use crate::{BignumRef, Fixnum, Sym};
 
 /// A structure that can be serialized into ruby marshal data.
 pub trait Serialize {
@@ -35,8 +35,11 @@ pub trait Serializer: Sized {
     /// Serialize a boolean value.
     fn serialize_bool(self, v: bool) -> Result<Self::Ok>;
 
-    /// Serialize an integer value.
-    fn serialize_i32(self, v: i32) -> Result<Self::Ok>;
+    /// Serialize an integer value within the interval [-2<sup>30</sup>, 2<sup>30</sup>).
+    fn serialize_fixnum(self, v: Fixnum) -> Result<Self::Ok>;
+
+    /// Serialize an integer value outside of the interval [-2<sup>30</sup>, 2<sup>30</sup>).
+    fn serialize_bignum(self, v: BignumRef<'_>) -> Result<Self::Ok>;
 
     /// Serialize a float value.
     fn serialize_f64(self, v: f64) -> Result<Self::Ok>;

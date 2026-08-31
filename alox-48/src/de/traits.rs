@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::{error::Unexpected, Error, Result};
-use crate::Sym;
+use crate::{BignumRef, Fixnum, Sym};
 use std::marker::PhantomData;
 
 /// A structure that can be deserialized from ruby marshal format.
@@ -67,9 +67,13 @@ pub trait Visitor<'de>: Sized {
     fn visit_bool(self, v: bool) -> Result<Self::Value> {
         Err(Error::invalid_value(Unexpected::Bool(v), &self))
     }
-    /// Input contains an integer value.
-    fn visit_i32(self, v: i32) -> Result<Self::Value> {
-        Err(Error::invalid_value(Unexpected::Integer(v), &self))
+    /// Input contains an integer value within the interval [-2<sup>30</sup>, 2<sup>30</sup>).
+    fn visit_fixnum(self, v: Fixnum) -> Result<Self::Value> {
+        Err(Error::invalid_value(Unexpected::Fixnum(v), &self))
+    }
+    /// Input contains an integer value outside of the interval [-2<sup>30</sup>, 2<sup>30</sup>).
+    fn visit_bignum(self, v: BignumRef<'de>) -> Result<Self::Value> {
+        Err(Error::invalid_value(Unexpected::Bignum(v), &self))
     }
     /// Input contains a float value.
     fn visit_f64(self, v: f64) -> Result<Self::Value> {

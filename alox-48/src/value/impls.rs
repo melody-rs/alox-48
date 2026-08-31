@@ -3,7 +3,8 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-use super::{Object, RbArray, RbHash, RbString, Symbol, Userdata, Value};
+use super::{Bignum, Fixnum, Object, RbArray, RbHash, RbString, Symbol, Userdata, Value};
+use crate::NumCast;
 
 impl PartialEq for Value {
     #[allow(clippy::too_many_lines)]
@@ -24,8 +25,15 @@ impl PartialEq for Value {
                     false
                 }
             }
-            Value::Integer(i) => {
-                if let Value::Integer(i2) = other {
+            Value::Fixnum(i) => {
+                if let Value::Fixnum(i2) = other {
+                    i == i2
+                } else {
+                    false
+                }
+            }
+            Value::Bignum(i) => {
+                if let Value::Bignum(i2) = other {
                     i == i2
                 } else {
                     false
@@ -169,14 +177,21 @@ impl PartialEq<bool> for Value {
     }
 }
 
-impl PartialEq<i32> for Value {
-    fn eq(&self, other: &i32) -> bool {
-        match self {
-            Value::Integer(v) => other == v,
-            _ => false,
-        }
-    }
+macro_rules! primitive_int_impl {
+    ($($primitive:ty),* $(,)?) => {
+        $(impl PartialEq<$primitive> for Value {
+            fn eq(&self, other: &$primitive) -> bool {
+                match self {
+                    Value::Fixnum(v) => <Fixnum as NumCast>::from(*other).is_some_and(|other| other == *v),
+                    Value::Bignum(v) => <Bignum as NumCast>::from(*other).is_some_and(|other| other == *v),
+                    _ => false,
+                }
+            }
+        })*
+    };
 }
+
+primitive_int_impl!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
 
 impl PartialEq<f64> for Value {
     fn eq(&self, other: &f64) -> bool {
@@ -273,7 +288,8 @@ impl std::hash::Hash for Value {
             Value::Nil => {}
             Value::Bool(b) => b.hash(state),
             Value::Float(f) => f.to_bits().hash(state), // not the best but eh whos using a float as a hash key
-            Value::Integer(i) => i.hash(state),
+            Value::Fixnum(i) => <i32 as From<_>>::from(*i).hash(state),
+            Value::Bignum(i) => i.as_le_bytes().hash(state),
             Value::String(s) => {
                 s.data.hash(state);
             }

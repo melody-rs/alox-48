@@ -14,9 +14,11 @@ pub enum Tag {
 
     False = b'F',
 
-    Integer = b'i',
+    Fixnum = b'i',
 
     Float = b'f',
+
+    Bignum = b'l',
 
     String = b'\"',
 
@@ -61,8 +63,9 @@ impl Tag {
             b'0' => Some(Tag::Nil),
             b'T' => Some(Tag::True),
             b'F' => Some(Tag::False),
-            b'i' => Some(Tag::Integer),
+            b'i' => Some(Tag::Fixnum),
             b'f' => Some(Tag::Float),
+            b'l' => Some(Tag::Bignum),
             b'\"' => Some(Tag::String),
             b'[' => Some(Tag::Array),
             b'{' => Some(Tag::Hash),
@@ -91,7 +94,9 @@ impl Tag {
             Self::Nil
                 | Self::True
                 | Self::False
-                | Self::Integer
+                | Self::Fixnum
+                | Self::Float
+                | Self::Bignum
                 | Self::Symbol
                 | Self::Symlink
                 | Self::ObjectLink

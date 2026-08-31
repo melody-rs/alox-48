@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::Instance;
+use crate::{Instance, NumCast};
 
 use super::{Object, RbHash, RbString, Symbol, Userdata, Value};
 
@@ -63,17 +63,33 @@ impl From<bool> for Value {
     }
 }
 
+impl From<f32> for Value {
+    fn from(value: f32) -> Self {
+        Self::Float(value as _)
+    }
+}
+
 impl From<f64> for Value {
     fn from(value: f64) -> Self {
         Self::Float(value)
     }
 }
 
-impl From<i32> for Value {
-    fn from(value: i32) -> Self {
-        Self::Integer(value)
-    }
+macro_rules! from_primitive_int_impl {
+    ($($primitive:ty),* $(,)?) => {
+        $(impl From<$primitive> for Value {
+            fn from(value: $primitive) -> Self {
+                if let Some(fixnum) = NumCast::from(value) {
+                    Self::Fixnum(fixnum)
+                } else {
+                    Self::Bignum(NumCast::from(value).unwrap())
+                }
+            }
+        })*
+    };
 }
+
+from_primitive_int_impl!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
 
 impl From<RbHash> for Value {
     fn from(value: RbHash) -> Self {
@@ -107,13 +123,25 @@ impl TryInto<RbString> for Value {
     }
 }
 
-impl TryInto<i32> for Value {
-    type Error = Self;
+macro_rules! to_primitive_int_impl {
+    ($($primitive:ty),* $(,)?) => {
+        $(impl TryInto<$primitive> for Value {
+            type Error = Self;
 
-    fn try_into(self) -> Result<i32, Self::Error> {
-        self.into_integer()
-    }
+            fn try_into(self) -> Result<$primitive, Self::Error> {
+                match self.into_fixnum() {
+                    Ok(fixnum) => <$primitive as NumCast>::from(fixnum).ok_or(Value::Fixnum(fixnum)),
+                    Err(value) => {
+                        let bignum = value.into_bignum()?;
+                        <$primitive as NumCast>::from(bignum.as_ref()).ok_or(Value::Bignum(bignum))
+                    }
+                }
+            }
+        })*
+    };
 }
+
+to_primitive_int_impl!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
 
 impl TryInto<f64> for Value {
     type Error = Self;

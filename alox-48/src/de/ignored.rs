@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::{traits::InstanceAccess, Deserialize, Result, Visitor};
-use crate::{DeserializerTrait, IvarAccess, Sym};
+use crate::{BignumRef, DeserializerTrait, Fixnum, IvarAccess, Sym};
 
 /// A type that implements deserialize which ignores all values.
 #[derive(Clone, Copy, Debug, Default)]
@@ -25,7 +25,10 @@ impl<'de> Visitor<'de> for IgnoredVisitor {
     fn visit_bool(self, _v: bool) -> Result<Self::Value> {
         Ok(Ignored)
     }
-    fn visit_i32(self, _v: i32) -> Result<Self::Value> {
+    fn visit_fixnum(self, _v: Fixnum) -> Result<Self::Value> {
+        Ok(Ignored)
+    }
+    fn visit_bignum(self, _v: BignumRef<'de>) -> Result<Self::Value> {
         Ok(Ignored)
     }
     fn visit_f64(self, _v: f64) -> Result<Self::Value> {

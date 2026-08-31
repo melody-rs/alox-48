@@ -3,6 +3,8 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
+use super::{Error, Kind, Result, Serialize, SerializeArray, SerializerTrait};
+use crate::{Bignum, NumCast};
 use std::{
     cell::{Cell, RefCell},
     collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque},
@@ -18,26 +20,38 @@ use std::{
     },
 };
 
-use super::{Error, Kind, Result, Serialize, SerializeArray, SerializerTrait};
-
 // some of these macros are lifted directly from serde.
 // serde is under a fairly permissive license (and any macro i would write would likely look identical) so this is okay.
 macro_rules! primitive_int_impl {
-    ($($primitive:ty),*) => {
+    ($($primitive:ty),* $(,)?) => {
         $(impl Serialize for $primitive {
             fn serialize<S>(&self, serializer: S) -> Result<S::Ok>
             where
                 S: SerializerTrait
             {
-                serializer.serialize_i32(*self as i32)
+                if let Some(fixnum) = NumCast::from(*self) {
+                    serializer.serialize_fixnum(fixnum)
+                } else {
+                    serializer.serialize_bignum(<Bignum as NumCast>::from(*self).unwrap().as_ref())
+                }
             }
         })*
     };
 }
 
 primitive_int_impl! {
-    u8, u16, u32, u64, u128, usize,
-    i8, i16, i32, i64, i128, isize
+    u8,
+    u16,
+    u32,
+    u64,
+    u128,
+    usize,
+    i8,
+    i16,
+    i32,
+    i64,
+    i128,
+    isize,
 }
 
 impl Serialize for f32 {
@@ -45,7 +59,7 @@ impl Serialize for f32 {
     where
         S: SerializerTrait,
     {
-        serializer.serialize_f64(f64::from(*self))
+        serializer.serialize_f64((*self).into())
     }
 }
 

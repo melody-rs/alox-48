@@ -1,0 +1,390 @@
+// Copyright (c) 2024 Lily Lyons
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+use crate::{FromPrimitive, NumCast, ToPrimitive};
+
+/// A type representing a borrowed arbitrary-precision integer outside of the interval
+/// [-2<sup>30</sup>, 2<sup>30</sup>).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct BignumRef<'a> {
+    /// True if the integer is less than zero, false if the integer is zero or greater than zero.
+    is_negative: bool,
+    /// Little-endian bytes of the integer with all trailing zero bytes removed.
+    le_bytes: &'a [u8],
+}
+
+/// A type representing an owned arbitrary-precision integer outside of the interval
+/// [-2<sup>30</sup>, 2<sup>30</sup>).
+#[derive(Clone, PartialEq, Eq)]
+pub struct Bignum {
+    /// True if the integer is less than zero, false if the integer is zero or greater than zero.
+    is_negative: bool,
+    /// Little-endian bytes of the integer with all trailing zero bytes removed.
+    le_bytes: Vec<u8>,
+}
+
+impl<'a> From<&'a Bignum> for BignumRef<'a> {
+    fn from(value: &'a Bignum) -> Self {
+        Self {
+            is_negative: value.is_negative,
+            le_bytes: &value.le_bytes,
+        }
+    }
+}
+
+impl<'a> From<BignumRef<'a>> for Bignum {
+    fn from(value: BignumRef<'a>) -> Self {
+        Self {
+            is_negative: value.is_negative,
+            le_bytes: value.le_bytes.to_vec(),
+        }
+    }
+}
+
+impl<'a> From<&BignumRef<'a>> for Bignum {
+    fn from(value: &BignumRef<'a>) -> Self {
+        (*value).into()
+    }
+}
+
+impl<'a> BignumRef<'a> {
+    /// Attempts to create a new [`BignumRef`] from a sign and little-endian bytes.
+    /// Will fail if the represented integer is within the interval
+    /// [-2<sup>30</sup>, 2<sup>30</sup>).
+    pub fn from_le_bytes(is_negative: bool, le_bytes: &'a [u8]) -> Option<Self> {
+        let (is_negative, le_bytes) = super::canonicalize_le_bytes_ref(is_negative, le_bytes);
+        let value = Self {
+            is_negative,
+            le_bytes,
+        };
+        value
+            .to_i32()
+            .is_none_or(|int| crate::Fixnum::from_i32(int).is_none())
+            .then_some(value)
+    }
+
+    /// Clones this object into a new [`Bignum`].
+    pub fn to_bignum(&self) -> Bignum {
+        self.into()
+    }
+
+    /// Returns the sign (true if negative, false if nonnegative) and little-endian bytes.
+    pub fn as_le_bytes(&self) -> (bool, &[u8]) {
+        (self.is_negative, self.le_bytes)
+    }
+}
+
+impl Bignum {
+    /// Attempts to create a new [`Bignum`] from a sign and little-endian bytes.
+    /// Will fail if the represented integer is within the interval
+    /// [-2<sup>30</sup>, 2<sup>30</sup>).
+    pub fn from_le_bytes(is_negative: bool, le_bytes: Vec<u8>) -> Option<Self> {
+        let (is_negative, le_bytes) = super::canonicalize_le_bytes_vec(is_negative, le_bytes);
+        let value = Self {
+            is_negative,
+            le_bytes,
+        };
+        value
+            .to_i32()
+            .is_none_or(|int| crate::Fixnum::from_i32(int).is_none())
+            .then_some(value)
+    }
+
+    /// Borrows this object as a [`BignumRef`].
+    pub fn as_ref(&self) -> BignumRef<'_> {
+        self.into()
+    }
+
+    /// Returns the sign (true if negative, false if nonnegative) and little-endian bytes.
+    pub fn as_le_bytes(&self) -> (bool, &[u8]) {
+        (self.is_negative, &self.le_bytes)
+    }
+
+    /// Consumes this object, returning the sign (true if negative, false if nonnegative) and
+    /// little-endian bytes.
+    pub fn to_le_bytes(self) -> (bool, Vec<u8>) {
+        (self.is_negative, self.le_bytes)
+    }
+}
+
+impl<'a> From<BignumRef<'a>> for num_bigint::BigInt {
+    fn from(value: BignumRef<'a>) -> Self {
+        num_bigint::BigInt::from_bytes_le(
+            if value.is_negative {
+                num_bigint::Sign::Minus
+            } else {
+                num_bigint::Sign::Plus
+            },
+            value.le_bytes,
+        )
+    }
+}
+
+impl<'a> From<&BignumRef<'a>> for num_bigint::BigInt {
+    fn from(value: &BignumRef<'a>) -> Self {
+        (*value).into()
+    }
+}
+
+impl From<&Bignum> for num_bigint::BigInt {
+    fn from(value: &Bignum) -> Self {
+        value.as_ref().into()
+    }
+}
+
+impl FromPrimitive for Bignum {
+    fn from_i64(n: i64) -> Option<Self> {
+        Self::from_le_bytes(n.is_negative(), n.wrapping_abs().to_le_bytes().to_vec())
+    }
+
+    fn from_i128(n: i128) -> Option<Self> {
+        Self::from_le_bytes(n.is_negative(), n.wrapping_abs().to_le_bytes().to_vec())
+    }
+
+    fn from_u64(n: u64) -> Option<Self> {
+        Self::from_le_bytes(false, n.to_le_bytes().to_vec())
+    }
+
+    fn from_u128(n: u128) -> Option<Self> {
+        Self::from_le_bytes(false, n.to_le_bytes().to_vec())
+    }
+
+    fn from_f64(n: f64) -> Option<Self> {
+        if !n.is_finite() {
+            return None;
+        }
+        let (mantissa, exponent, sign) = num_traits::Float::integer_decode(n);
+        let (padding_size, value) = if exponent > 0 {
+            (exponent / 8, mantissa << (exponent % 8))
+        } else {
+            (0, mantissa.unbounded_shr(-exponent as _))
+        };
+        let padding_size = padding_size as usize;
+        let mut le_bytes = Vec::with_capacity(padding_size + size_of::<u64>());
+        le_bytes.extend(std::iter::repeat_n(0, padding_size).chain(value.to_le_bytes()));
+        Self::from_le_bytes(sign < 0, le_bytes)
+    }
+}
+
+impl ToPrimitive for BignumRef<'_> {
+    fn to_i64(&self) -> Option<i64> {
+        (self.le_bytes.len() <= size_of::<i64>())
+            .then(|| {
+                let value = i64::from_le_bytes(super::to_array_with_default(self.le_bytes));
+                let value = if self.is_negative {
+                    value.wrapping_neg()
+                } else {
+                    value
+                };
+                (value.is_negative() == self.is_negative).then_some(value)
+            })
+            .flatten()
+    }
+
+    fn to_i128(&self) -> Option<i128> {
+        (self.le_bytes.len() <= size_of::<i128>())
+            .then(|| {
+                let value = i128::from_le_bytes(super::to_array_with_default(self.le_bytes));
+                let value = if self.is_negative {
+                    value.wrapping_neg()
+                } else {
+                    value
+                };
+                (value.is_negative() == self.is_negative).then_some(value)
+            })
+            .flatten()
+    }
+
+    fn to_u64(&self) -> Option<u64> {
+        (!self.is_negative && self.le_bytes.len() <= size_of::<u64>())
+            .then(|| u64::from_le_bytes(super::to_array_with_default(self.le_bytes)))
+    }
+
+    fn to_u128(&self) -> Option<u128> {
+        (!self.is_negative && self.le_bytes.len() <= size_of::<u128>())
+            .then(|| u128::from_le_bytes(super::to_array_with_default(self.le_bytes)))
+    }
+
+    fn to_f64(&self) -> Option<f64> {
+        let mantissa_le_bytes = &self.le_bytes[self.le_bytes.len().saturating_sub(7)..];
+        let shift = self.le_bytes.len() - mantissa_le_bytes.len();
+        let value_unsigned = if shift > (f64::MAX_EXP / 8).try_into().unwrap() {
+            f64::INFINITY
+        } else {
+            let mantissa = u64::from_le_bytes(super::to_array_with_default(mantissa_le_bytes));
+            mantissa.to_f64().unwrap() * 2.0f64.powi(8 * shift as i32)
+        };
+        Some(if self.is_negative {
+            -value_unsigned
+        } else {
+            value_unsigned
+        })
+    }
+}
+
+impl ToPrimitive for Bignum {
+    fn to_i64(&self) -> Option<i64> {
+        self.as_ref().to_i64()
+    }
+
+    fn to_i128(&self) -> Option<i128> {
+        self.as_ref().to_i128()
+    }
+
+    fn to_u64(&self) -> Option<u64> {
+        self.as_ref().to_u64()
+    }
+
+    fn to_u128(&self) -> Option<u128> {
+        self.as_ref().to_u128()
+    }
+
+    fn to_f64(&self) -> Option<f64> {
+        self.as_ref().to_f64()
+    }
+}
+
+impl NumCast for Bignum {
+    fn from<T: ToPrimitive>(n: T) -> Option<Self> {
+        if let Some(n) = n.to_i128() {
+            FromPrimitive::from_i128(n)
+        } else if let Some(n) = n.to_u128() {
+            FromPrimitive::from_u128(n)
+        } else if let Some(n) = n.to_f64() {
+            FromPrimitive::from_f64(n)
+        } else {
+            None
+        }
+    }
+}
+
+macro_rules! try_from_impl {
+    ($($from:ty),* $(,)?) => {
+        $(impl TryFrom<$from> for Bignum {
+            type Error = $from;
+            fn try_from(value: $from) -> Result<Self, Self::Error> {
+                NumCast::from(value).ok_or(value)
+            }
+        })*
+    };
+}
+
+try_from_impl! {
+    i8,
+    u8,
+    i16,
+    u16,
+    i32,
+    u32,
+    i64,
+    u64,
+    i128,
+    u128,
+    isize,
+    usize,
+}
+
+macro_rules! try_into_impl {
+    ($($to:ty),* $(,)?) => {
+        $(impl<'a> TryFrom<BignumRef<'a>> for $to {
+            type Error = BignumRef<'a>;
+            fn try_from(value: BignumRef<'a>) -> Result<Self, Self::Error> {
+                NumCast::from(value).ok_or(value)
+            }
+        })*
+    };
+}
+
+try_into_impl! {
+    i8,
+    u8,
+    i16,
+    u16,
+    i32,
+    u32,
+    i64,
+    u64,
+    i128,
+    u128,
+    isize,
+    usize,
+}
+
+impl num_bigint::ToBigInt for BignumRef<'_> {
+    fn to_bigint(&self) -> Option<num_bigint::BigInt> {
+        Some(self.into())
+    }
+}
+
+impl num_bigint::ToBigInt for Bignum {
+    fn to_bigint(&self) -> Option<num_bigint::BigInt> {
+        self.as_ref().to_bigint()
+    }
+}
+
+impl num_bigint::ToBigUint for BignumRef<'_> {
+    fn to_biguint(&self) -> Option<num_bigint::BigUint> {
+        (!self.is_negative).then(|| num_bigint::BigUint::from_bytes_le(self.le_bytes))
+    }
+}
+
+impl num_bigint::ToBigUint for Bignum {
+    fn to_biguint(&self) -> Option<num_bigint::BigUint> {
+        self.as_ref().to_biguint()
+    }
+}
+
+impl Ord for BignumRef<'_> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        other
+            .is_negative
+            .cmp(&self.is_negative)
+            .then_with(|| self.le_bytes.len().cmp(&other.le_bytes.len()))
+            .then_with(|| self.le_bytes.iter().rev().cmp(other.le_bytes.iter().rev()))
+    }
+}
+
+impl Ord for Bignum {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_ref().cmp(&other.as_ref())
+    }
+}
+
+impl PartialOrd for BignumRef<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialOrd for Bignum {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl std::fmt::Debug for BignumRef<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        num_bigint::BigInt::from(self).fmt(f)
+    }
+}
+
+impl std::fmt::Debug for Bignum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}
+
+impl std::fmt::Display for BignumRef<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        num_bigint::BigInt::from(self).fmt(f)
+    }
+}
+
+impl std::fmt::Display for Bignum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}

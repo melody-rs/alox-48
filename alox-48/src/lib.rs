@@ -59,6 +59,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+pub use num_traits::{cast::cast, FromPrimitive, NumCast, ToPrimitive};
+
 /// A convenience module for getting exact details about where an error occurred.
 pub mod path_to_error;
 
@@ -75,7 +77,8 @@ pub use value::{from_value, to_value, Serializer as ValueSerializer, Value};
 mod rb_types;
 #[doc(inline)]
 pub use rb_types::{
-    Instance, Object, RbArray, RbFields, RbHash, RbString, RbStruct, Sym, Symbol, Userdata,
+    Bignum, BignumRef, Fixnum, Instance, Object, RbArray, RbFields, RbHash, RbString, RbStruct,
+    Sym, Symbol, Userdata,
 };
 
 #[doc(inline)]
@@ -119,6 +122,413 @@ where
 }
 
 #[cfg(test)]
+fn int_to_le_bytes<T>(int: T) -> (bool, <T as num_traits::ToBytes>::Bytes)
+where
+    T: num_traits::ToBytes + num_traits::Signed + num_traits::WrappingNeg,
+{
+    let is_negative = int.is_negative();
+    let le_bytes = if is_negative { int.wrapping_neg() } else { int }.to_le_bytes();
+    (is_negative, le_bytes)
+}
+
+#[cfg(test)]
+mod fixnum {
+    use crate::{int_to_le_bytes, Fixnum, FromPrimitive, ToPrimitive};
+
+    #[test]
+    fn i64_positive() {
+        let int: i64 = 0x3fffffff;
+
+        let fixnum = Fixnum::from_i64(int).unwrap();
+
+        assert_eq!(int, fixnum.into())
+    }
+
+    #[test]
+    fn i64_negative() {
+        let int: i64 = -0x40000000;
+
+        let fixnum = Fixnum::from_i64(int).unwrap();
+
+        assert_eq!(int, fixnum.into())
+    }
+
+    #[test]
+    fn u64() {
+        let int: u64 = 0x3fffffff;
+
+        let fixnum = Fixnum::from_u64(int).unwrap();
+
+        assert_eq!(Some(int), fixnum.to_u64())
+    }
+
+    #[test]
+    fn from_le_bytes_positive() {
+        let int: i64 = 0x3fffffff;
+        let (is_negative, le_bytes) = int_to_le_bytes(int);
+
+        let fixnum = Fixnum::from_le_bytes(is_negative, &le_bytes).unwrap();
+
+        assert_eq!(int, fixnum.into());
+    }
+
+    #[test]
+    fn from_le_bytes_negative() {
+        let int: i64 = -0x40000000;
+        let (is_negative, le_bytes) = int_to_le_bytes(int);
+
+        let fixnum = Fixnum::from_le_bytes(is_negative, &le_bytes).unwrap();
+
+        assert_eq!(int, fixnum.into());
+    }
+
+    #[test]
+    fn i64_positive_out_of_range() {
+        let int: i64 = 0x40000000;
+
+        assert!(Fixnum::from_i64(int).is_none());
+    }
+
+    #[test]
+    fn i64_negative_out_of_range() {
+        let int: i64 = -0x40000001;
+
+        assert!(Fixnum::from_i64(int).is_none());
+    }
+
+    #[test]
+    fn u64_out_of_range() {
+        let int: u64 = 0x40000000;
+
+        assert!(Fixnum::from_u64(int).is_none());
+    }
+
+    #[test]
+    fn from_le_bytes_positive_out_of_range() {
+        let int: i64 = 0x40000000;
+        let (is_negative, le_bytes) = int_to_le_bytes(int);
+
+        assert!(Fixnum::from_le_bytes(is_negative, &le_bytes).is_none());
+    }
+
+    #[test]
+    fn from_le_bytes_negative_out_of_range() {
+        let int: i64 = -0x40000001;
+        let (is_negative, le_bytes) = int_to_le_bytes(int);
+
+        assert!(Fixnum::from_le_bytes(is_negative, &le_bytes).is_none());
+    }
+
+    #[test]
+    fn i64_max() {
+        let int = i64::MAX;
+
+        assert!(Fixnum::from_i64(int).is_none());
+    }
+
+    #[test]
+    fn i64_min() {
+        let int = i64::MIN;
+
+        assert!(Fixnum::from_i64(int).is_none());
+    }
+
+    #[test]
+    fn u64_max() {
+        let int = u64::MAX;
+
+        assert!(Fixnum::from_u64(int).is_none());
+    }
+
+    #[test]
+    fn from_le_bytes_max() {
+        let int = i64::MAX;
+        let (is_negative, le_bytes) = int_to_le_bytes(int);
+
+        assert!(Fixnum::from_le_bytes(is_negative, &le_bytes).is_none());
+    }
+
+    #[test]
+    fn from_le_bytes_min() {
+        let int = i64::MIN;
+        let (is_negative, le_bytes) = int_to_le_bytes(int);
+
+        assert!(Fixnum::from_le_bytes(is_negative, &le_bytes).is_none());
+    }
+}
+
+#[cfg(test)]
+mod bignum {
+    use crate::{int_to_le_bytes, Bignum, FromPrimitive, ToPrimitive};
+
+    #[test]
+    fn i64_positive() {
+        let int: i64 = 0x40000000;
+
+        let bignum = Bignum::from_i64(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_i64());
+    }
+
+    #[test]
+    fn i64_negative() {
+        let int: i64 = -0x40000001;
+
+        let bignum = Bignum::from_i64(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_i64());
+    }
+
+    #[test]
+    fn u64() {
+        let int: u64 = 0x40000000;
+
+        let bignum = Bignum::from_u64(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_u64());
+    }
+
+    #[test]
+    fn i64_max() {
+        let int = i64::MAX;
+
+        let bignum = Bignum::from_i64(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_i64());
+    }
+
+    #[test]
+    fn i64_min() {
+        let int = i64::MIN;
+
+        let bignum = Bignum::from_i64(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_i64());
+    }
+
+    #[test]
+    fn u64_max() {
+        let int = u64::MAX;
+
+        let bignum = Bignum::from_u64(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_u64());
+    }
+
+    #[test]
+    fn i128_positive() {
+        let int: i128 = 0x40000000;
+
+        let bignum = Bignum::from_i128(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_i128());
+    }
+
+    #[test]
+    fn i128_negative() {
+        let int: i128 = -0x40000001;
+
+        let bignum = Bignum::from_i128(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_i128());
+    }
+
+    #[test]
+    fn u128() {
+        let int: u128 = 0x40000000;
+
+        let bignum = Bignum::from_u128(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_u128());
+    }
+
+    #[test]
+    fn i128_max() {
+        let int = i128::MAX;
+
+        let bignum = Bignum::from_i128(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_i128());
+    }
+
+    #[test]
+    fn i128_min() {
+        let int = i128::MIN;
+
+        let bignum = Bignum::from_i128(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_i128());
+    }
+
+    #[test]
+    fn u128_max() {
+        let int = u128::MAX;
+
+        let bignum = Bignum::from_u128(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_u128());
+    }
+
+    #[test]
+    fn f64_positive() {
+        let int: f64 = 0x40000000 as _;
+
+        let bignum = Bignum::from_f64(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_f64());
+    }
+
+    #[test]
+    fn f64_negative() {
+        let int: f64 = -0x40000001 as _;
+
+        let bignum = Bignum::from_f64(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_f64());
+    }
+
+    #[test]
+    fn f64_max() {
+        let int = f64::MAX;
+
+        let bignum = Bignum::from_f64(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_f64());
+    }
+
+    #[test]
+    fn f64_min() {
+        let int = f64::MIN;
+
+        let bignum = Bignum::from_f64(int).unwrap();
+
+        assert_eq!(Some(int), bignum.to_f64());
+    }
+
+    #[test]
+    fn f64_mantissa_overflow() {
+        let int = u128::MAX;
+
+        let bignum = Bignum::from_u128(int).unwrap();
+
+        assert_eq!(Some(3.402823669209385e38), bignum.to_f64());
+    }
+
+    #[test]
+    fn f64_infinity() {
+        let int = f64::INFINITY;
+
+        assert!(Bignum::from_f64(int).is_none());
+    }
+
+    #[test]
+    fn f64_neg_infinity() {
+        let int = f64::NEG_INFINITY;
+
+        assert!(Bignum::from_f64(int).is_none());
+    }
+
+    #[test]
+    fn f64_nan() {
+        let int = f64::NAN;
+
+        assert!(Bignum::from_f64(int).is_none());
+    }
+
+    #[test]
+    fn as_le_bytes_positive() {
+        let int: i128 = 0x4d3c2b1a;
+        let (is_negative, le_bytes) = int_to_le_bytes(int);
+
+        let bignum = Bignum::from_le_bytes(is_negative, le_bytes.to_vec()).unwrap();
+
+        let expected_is_negative = false;
+        let expected_le_bytes: &[_] = &[0x1a, 0x2b, 0x3c, 0x4d];
+
+        assert_eq!(
+            bignum.as_ref().as_le_bytes(),
+            (expected_is_negative, expected_le_bytes),
+        );
+        assert_eq!(
+            bignum.as_le_bytes(),
+            (expected_is_negative, expected_le_bytes),
+        );
+        assert_eq!(
+            bignum.to_le_bytes(),
+            (expected_is_negative, expected_le_bytes.to_vec()),
+        );
+    }
+
+    #[test]
+    fn as_le_bytes_negative() {
+        let int: i128 = -0x4d3c2b1a;
+        let (is_negative, le_bytes) = int_to_le_bytes(int);
+
+        let bignum = Bignum::from_le_bytes(is_negative, le_bytes.to_vec()).unwrap();
+
+        let expected_is_negative = true;
+        let expected_le_bytes: &[_] = &[0x1a, 0x2b, 0x3c, 0x4d];
+
+        assert_eq!(
+            bignum.as_ref().as_le_bytes(),
+            (expected_is_negative, expected_le_bytes),
+        );
+        assert_eq!(
+            bignum.as_le_bytes(),
+            (expected_is_negative, expected_le_bytes),
+        );
+        assert_eq!(
+            bignum.to_le_bytes(),
+            (expected_is_negative, expected_le_bytes.to_vec()),
+        );
+    }
+
+    #[test]
+    fn ord_differing_sign() {
+        let int1: i64 = -0xffffffffffff;
+        let int2: i64 = 0x0000ffffffff;
+
+        let bignum1 = Bignum::from_i64(int1);
+        let bignum2 = Bignum::from_i64(int2);
+
+        assert!(bignum1 < bignum2);
+    }
+
+    #[test]
+    fn ord_same_sign_differing_length() {
+        let int1: i64 = 0x0000ffffffff;
+        let int2: i64 = 0xffffffffffff;
+
+        let bignum1 = Bignum::from_i64(int1);
+        let bignum2 = Bignum::from_i64(int2);
+
+        assert!(bignum1 < bignum2);
+    }
+
+    #[test]
+    fn ord_same_sign_same_length() {
+        let int1: i64 = 0xfffffffffffe;
+        let int2: i64 = 0xffffffffffff;
+
+        let bignum1 = Bignum::from_i64(int1);
+        let bignum2 = Bignum::from_i64(int2);
+
+        assert!(bignum1 < bignum2);
+    }
+
+    #[test]
+    fn equality_differing_length() {
+        let int1: i64 = 0x40000000;
+        let int2: i128 = 0x40000000;
+
+        let bignum1 = Bignum::from_i64(int1);
+        let bignum2 = Bignum::from_i128(int2);
+
+        assert_eq!(bignum1, bignum2);
+    }
+}
+
+#[cfg(test)]
 mod ints {
     #[test]
     fn deserialize() {
@@ -141,8 +551,52 @@ mod ints {
     }
 
     #[test]
+    fn round_trip_bignum_positive_even_length() {
+        let int: i64 = 0x1122334455667788;
+
+        let bytes = crate::to_bytes(int).unwrap();
+
+        let int2 = crate::from_bytes(&bytes).unwrap();
+
+        assert_eq!(int, int2);
+    }
+
+    #[test]
+    fn round_trip_bignum_negative_even_length() {
+        let int: i64 = -0x1122334455667788;
+
+        let bytes = crate::to_bytes(int).unwrap();
+
+        let int2 = crate::from_bytes(&bytes).unwrap();
+
+        assert_eq!(int, int2);
+    }
+
+    #[test]
+    fn round_trip_bignum_positive_odd_length() {
+        let int: i64 = 0x11223344556677;
+
+        let bytes = crate::to_bytes(int).unwrap();
+
+        let int2 = crate::from_bytes(&bytes).unwrap();
+
+        assert_eq!(int, int2);
+    }
+
+    #[test]
+    fn round_trip_bignum_negative_odd_length() {
+        let int: i64 = -0x11223344556677;
+
+        let bytes = crate::to_bytes(int).unwrap();
+
+        let int2 = crate::from_bytes(&bytes).unwrap();
+
+        assert_eq!(int, int2);
+    }
+
+    #[test]
     fn round_trip_value() {
-        let value = crate::Value::Integer(123);
+        let value = crate::Value::Fixnum(123i16.into());
 
         let bytes = crate::to_bytes(&value).unwrap();
 
@@ -508,7 +962,7 @@ mod value_test {
 
 #[cfg(test)]
 mod round_trip {
-    use crate::{from_bytes, to_bytes, Instance, RbFields, RbHash, RbStruct, Value};
+    use crate::{from_bytes, to_bytes, FromPrimitive, Instance, RbFields, RbHash, RbStruct, Value};
 
     #[test]
     fn nil() {
@@ -545,7 +999,51 @@ mod round_trip {
 
     #[test]
     fn integer() {
-        let original = Value::Integer(123);
+        let original = Value::Fixnum(123i16.into());
+
+        let bytes = to_bytes(&original).unwrap();
+
+        let new: Value = from_bytes(&bytes).unwrap();
+
+        assert_eq!(original, new);
+    }
+
+    #[test]
+    fn integer_bignum_positive_even_length() {
+        let original = Value::Bignum(FromPrimitive::from_i64(0x1122334455667788).unwrap());
+
+        let bytes = to_bytes(&original).unwrap();
+
+        let new: Value = from_bytes(&bytes).unwrap();
+
+        assert_eq!(original, new);
+    }
+
+    #[test]
+    fn integer_bignum_negative_even_length() {
+        let original = Value::Bignum(FromPrimitive::from_i64(-0x1122334455667788).unwrap());
+
+        let bytes = to_bytes(&original).unwrap();
+
+        let new: Value = from_bytes(&bytes).unwrap();
+
+        assert_eq!(original, new);
+    }
+
+    #[test]
+    fn integer_bignum_positive_odd_length() {
+        let original = Value::Bignum(FromPrimitive::from_i64(0x11223344556677).unwrap());
+
+        let bytes = to_bytes(&original).unwrap();
+
+        let new: Value = from_bytes(&bytes).unwrap();
+
+        assert_eq!(original, new);
+    }
+
+    #[test]
+    fn integer_bignum_negative_odd_length() {
+        let original = Value::Bignum(FromPrimitive::from_i64(-0x11223344556677).unwrap());
 
         let bytes = to_bytes(&original).unwrap();
 
@@ -578,7 +1076,7 @@ mod round_trip {
 
     #[test]
     fn array() {
-        let original = Value::Array(vec![Value::Integer(1), Value::Float(256.652)]);
+        let original = Value::Array(vec![Value::Fixnum(1i16.into()), Value::Float(256.652)]);
 
         let bytes = to_bytes(&original).unwrap();
 
@@ -590,7 +1088,7 @@ mod round_trip {
     #[test]
     fn hash() {
         let mut hash = RbHash::new();
-        hash.insert(Value::Bool(true), Value::Integer(1));
+        hash.insert(Value::Bool(true), Value::Fixnum(1i16.into()));
         hash.insert(Value::Symbol("a_symbol".into()), Value::Float(256.652));
         let original = Value::Hash(hash);
 
@@ -640,7 +1138,7 @@ mod round_trip {
         let inner_value = Box::new(Value::String("I've been round tripped, with ivars!".into()));
         let mut fields = RbFields::new();
         fields.insert("E".into(), Value::Bool(true));
-        fields.insert("@round_trip".into(), Value::Integer(123));
+        fields.insert("@round_trip".into(), Value::Fixnum(123i16.into()));
         let original = Value::Instance(Instance {
             value: inner_value,
             fields,

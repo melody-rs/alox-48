@@ -5,9 +5,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use crate::{
     de::{DeserializeSeed, Error, Kind, Result},
-    ArrayAccess, Deserialize, DeserializerTrait, HashAccess, Instance, InstanceAccess, IvarAccess,
-    Object, RbFields, RbHash, RbString, Sym, Userdata, Value, Visitor, VisitorInstance,
-    VisitorOption,
+    ArrayAccess, BignumRef, Deserialize, DeserializerTrait, Fixnum, HashAccess, Instance,
+    InstanceAccess, IvarAccess, Object, RbFields, RbHash, RbString, Sym, Userdata, Value, Visitor,
+    VisitorInstance, VisitorOption,
 };
 
 struct ValueVisitor;
@@ -27,8 +27,12 @@ impl<'de> Visitor<'de> for ValueVisitor {
         Ok(Value::Bool(v))
     }
 
-    fn visit_i32(self, v: i32) -> Result<Self::Value> {
-        Ok(Value::Integer(v))
+    fn visit_fixnum(self, v: Fixnum) -> Result<Self::Value> {
+        Ok(Value::Fixnum(v))
+    }
+
+    fn visit_bignum(self, v: BignumRef<'de>) -> Result<Self::Value> {
+        Ok(Value::Bignum(v.into()))
     }
 
     fn visit_f64(self, v: f64) -> Result<Self::Value> {
@@ -224,7 +228,8 @@ impl<'de> DeserializerTrait<'de> for &'de Value {
             Value::Nil => visitor.visit_nil(),
             Value::Bool(v) => visitor.visit_bool(*v),
             Value::Float(f) => visitor.visit_f64(*f),
-            Value::Integer(i) => visitor.visit_i32(*i),
+            Value::Fixnum(i) => visitor.visit_fixnum(*i),
+            Value::Bignum(i) => visitor.visit_bignum(i.as_ref()),
             Value::String(s) => visitor.visit_string(&s.data),
             Value::Symbol(s) => visitor.visit_symbol(s),
             Value::Array(array) => visitor.visit_array(ValueArrayAccess { array, index: 0 }),

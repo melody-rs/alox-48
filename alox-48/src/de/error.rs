@@ -7,7 +7,7 @@
 
 use std::str::Utf8Error;
 
-use crate::{tag::Tag, Sym, Visitor};
+use crate::{tag::Tag, BignumRef, Fixnum, Sym, Visitor};
 
 /// Type alias around a result.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -24,9 +24,6 @@ pub struct Error {
 /// Error type for this crate.
 #[derive(Debug, thiserror::Error)]
 pub enum Kind {
-    /// A length was negative when it should not have been.
-    #[error("Unexpected negative length {0}")]
-    UnexpectedNegativeLength(i32),
     /// Unrecognized tag was encountered.
     #[error("Wrong tag 0x{0:X} ({})", unknown_tag_to_char(*_0))]
     WrongTag(u8),
@@ -76,7 +73,8 @@ fn unknown_tag_to_char(tag: u8) -> char {
 pub enum Unexpected<'a> {
     Nil,
     Bool(bool),
-    Integer(i32),
+    Fixnum(Fixnum),
+    Bignum(BignumRef<'a>),
     Float(f64),
     Hash,
     Array,
@@ -125,7 +123,8 @@ impl std::fmt::Display for Unexpected<'_> {
         match self {
             Unexpected::Nil => f.write_str("nil"),
             Unexpected::Bool(v) => write!(f, "bool `{v}`"),
-            Unexpected::Integer(v) => write!(f, "integer `{v}`"),
+            Unexpected::Fixnum(v) => write!(f, "fixnum `{v}`"),
+            Unexpected::Bignum(v) => write!(f, "bignum `{v}`"),
             Unexpected::Float(v) => write!(f, "float `{v}`"),
             Unexpected::Hash => write!(f, "hash"),
             Unexpected::Array => write!(f, "array"),

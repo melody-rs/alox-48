@@ -6,6 +6,8 @@
 use super::Value;
 use indexmap::IndexMap;
 
+mod bignum;
+mod fixnum;
 mod instance;
 mod object;
 mod rb_string;
@@ -14,6 +16,8 @@ mod sym;
 mod symbol;
 mod userdata;
 
+pub use bignum::{Bignum, BignumRef};
+pub use fixnum::Fixnum;
 pub use instance::Instance;
 pub use object::Object;
 pub use rb_string::RbString;
@@ -30,3 +34,37 @@ pub type RbHash = IndexMap<Value, Value>;
 /// A type alias used to represent fields of objects.
 /// All objects store a [`Symbol`] to represent the key for instance variable, and we do that here too.
 pub type RbFields = IndexMap<Symbol, Value>;
+
+/// Returns `false` if `le_bytes` contains only zero bytes or `is_negative` otherwise, and the size
+/// of `le_bytes` excluding trailing zero bytes.
+fn get_canonical_le_bytes_info(is_negative: bool, le_bytes: &[u8]) -> (bool, usize) {
+    if let Some((i, _)) = le_bytes.iter().enumerate().rfind(|(_, byte)| **byte != 0) {
+        (is_negative, i + 1)
+    } else {
+        (false, 0)
+    }
+}
+
+/// Returns an unambiguous version of the integer represented by the given sign and little-endian
+/// bytes.
+fn canonicalize_le_bytes_ref(is_negative: bool, le_bytes: &[u8]) -> (bool, &[u8]) {
+    let (is_negative, le_bytes_size) = get_canonical_le_bytes_info(is_negative, le_bytes);
+    (is_negative, &le_bytes[..le_bytes_size])
+}
+
+/// Returns an unambiguous version of the integer represented by the given sign and little-endian
+/// bytes.
+fn canonicalize_le_bytes_vec(is_negative: bool, mut le_bytes: Vec<u8>) -> (bool, Vec<u8>) {
+    let (is_negative, le_bytes_size) = get_canonical_le_bytes_info(is_negative, &le_bytes);
+    le_bytes.truncate(le_bytes_size);
+    (is_negative, le_bytes)
+}
+
+/// If `slice` contains at least `N` elements, returns a copy of the first `N` elements. Otherwise,
+/// returns a copy of `slice` zero-extended at the end.
+fn to_array_with_default<const N: usize>(slice: &[u8]) -> [u8; N] {
+    let mut bytes = [0u8; N];
+    let copy_size = N.min(slice.len());
+    bytes[..copy_size].copy_from_slice(&slice[..copy_size]);
+    bytes
+}

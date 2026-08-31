@@ -20,7 +20,7 @@ use super::{
     traits::VisitorOption, ArrayAccess, Deserialize, DeserializeSeed, DeserializerTrait, Error,
     HashAccess, Result, Unexpected, Visitor,
 };
-use crate::Sym;
+use crate::{BignumRef, Fixnum, NumCast, Sym};
 
 impl<'de, T> DeserializeSeed<'de> for PhantomData<T>
 where
@@ -36,89 +36,126 @@ where
     }
 }
 
-struct IntVisitor;
+struct IntVisitor<'de, T>(PhantomData<&'de T>);
 
-impl Visitor<'_> for IntVisitor {
-    type Value = i32;
+impl<'de, T> Visitor<'de> for IntVisitor<'de, T>
+where
+    T: std::fmt::Display + num_traits::Bounded + NumCast,
+{
+    type Value = T;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("an integer")
+        let min = T::min_value();
+        let max = T::max_value();
+        write!(
+            formatter,
+            "an integer in the range [{min}, {max}] or a finite float in the range [{min}, {max}]",
+        )
     }
 
-    fn visit_i32(self, v: i32) -> Result<Self::Value> {
-        Ok(v)
+    fn visit_fixnum(self, v: Fixnum) -> Result<Self::Value> {
+        T::from(v).ok_or(Error::invalid_value(Unexpected::Fixnum(v), &self))
+    }
+
+    fn visit_bignum(self, v: BignumRef<'de>) -> Result<Self::Value> {
+        T::from(v).ok_or(Error::invalid_value(Unexpected::Bignum(v), &self))
     }
 
     fn visit_f64(self, v: f64) -> Result<Self::Value> {
-        Ok(v as i32)
+        T::from(v).ok_or(Error::invalid_value(Unexpected::Float(v), &self))
     }
 }
 
 macro_rules! primitive_int_impl {
-    ($($primitive:ty),*) => {
+    ($($primitive:ty),* $(,)?) => {
         $(impl<'de> Deserialize<'de> for $primitive {
             fn deserialize<D>(deserializer: D) -> Result<Self>
             where
                 D: DeserializerTrait<'de>,
             {
-                let i = deserializer.deserialize(IntVisitor)?;
-                Ok(i as _)
+                deserializer.deserialize(IntVisitor::<'de, $primitive>(PhantomData))
             }
         })*
     };
 }
 
-struct NonZeroIntVisitor;
+primitive_int_impl! {
+    u8,
+    u16,
+    u32,
+    u64,
+    u128,
+    usize,
+    i8,
+    i16,
+    i32,
+    i64,
+    i128,
+    isize,
+}
 
-impl Visitor<'_> for NonZeroIntVisitor {
-    type Value = std::num::NonZeroI32;
+struct NonZeroIntVisitor<'de, T>(PhantomData<&'de T>);
+
+impl<'de, T> Visitor<'de> for NonZeroIntVisitor<'de, T>
+where
+    T: std::fmt::Display + num_traits::Bounded + NumCast,
+{
+    type Value = T;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("a non-zero integer")
+        let min = T::min_value();
+        let max = T::max_value();
+        write!(
+            formatter,
+            "a nonzero integer in the range [{min}, {max}] or a nonzero finite float in the range [{min}, {max}]",
+        )
     }
 
-    fn visit_i32(self, v: i32) -> Result<Self::Value> {
-        std::num::NonZeroI32::new(v)
-            .ok_or_else(|| Error::invalid_value(Unexpected::Integer(v), &self))
+    fn visit_fixnum(self, v: Fixnum) -> Result<Self::Value> {
+        (v != 0i16.into())
+            .then(|| T::from(v))
+            .flatten()
+            .ok_or_else(|| Error::invalid_value(Unexpected::Fixnum(v), &self))
+    }
+
+    fn visit_bignum(self, v: BignumRef<'de>) -> Result<Self::Value> {
+        T::from(v).ok_or(Error::invalid_value(Unexpected::Bignum(v), &self))
     }
 
     fn visit_f64(self, v: f64) -> Result<Self::Value> {
-        std::num::NonZeroI32::new(v as i32)
-            .ok_or_else(|| Error::invalid_value(Unexpected::Integer(v as i32), &self))
+        (v != 0.)
+            .then(|| T::from(v))
+            .flatten()
+            .ok_or_else(|| Error::invalid_value(Unexpected::Float(v), &self))
     }
 }
 
-primitive_int_impl!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
-
 macro_rules! nonzero_int_impl {
-    ($($primitive:ty),*) => {
-        $(impl<'de> Deserialize<'de> for $primitive {
+    ($($primitive:ty => $nonzero_primitive:ty),* $(,)?) => {
+        $(impl<'de> Deserialize<'de> for $nonzero_primitive {
             fn deserialize<D>(deserializer: D) -> Result<Self>
             where
                 D: DeserializerTrait<'de>,
             {
-                let i = deserializer.deserialize(NonZeroIntVisitor)?.get();
-                // we've already asserted that it's non-zero simply by the fact that NonZeroIntVisitor returns a NonZeroI32.
-                // so this new_unchecked is safe
-                Ok(unsafe { <$primitive>::new_unchecked(i as _) })
+                Ok(deserializer.deserialize(IntVisitor::<'de, $primitive>(PhantomData))?.try_into().unwrap())
             }
         })*
     };
 }
 
 nonzero_int_impl!(
-    NonZeroU8,
-    NonZeroU16,
-    NonZeroU32,
-    NonZeroU64,
-    NonZeroU128,
-    NonZeroUsize,
-    NonZeroI8,
-    NonZeroI16,
-    NonZeroI32,
-    NonZeroI64,
-    NonZeroI128,
-    NonZeroIsize
+    u8 => NonZeroU8,
+    u16 => NonZeroU16,
+    u32 => NonZeroU32,
+    u64 => NonZeroU64,
+    u128 => NonZeroU128,
+    usize => NonZeroUsize,
+    i8 => NonZeroI8,
+    i16 => NonZeroI16,
+    i32 => NonZeroI32,
+    i64 => NonZeroI64,
+    i128 => NonZeroI128,
+    isize => NonZeroIsize,
 );
 
 struct UnitVisitor;
@@ -173,11 +210,17 @@ impl Visitor<'_> for FloatVisitor {
     type Value = f64;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("a float")
+        formatter.write_str("a float or integer")
     }
 
-    fn visit_i32(self, v: i32) -> Result<Self::Value> {
-        Ok(f64::from(v))
+    fn visit_fixnum(self, v: Fixnum) -> Result<Self::Value> {
+        num_traits::ToPrimitive::to_f64(&v)
+            .ok_or(Error::invalid_value(Unexpected::Fixnum(v), &self))
+    }
+
+    fn visit_bignum(self, v: BignumRef<'_>) -> Result<Self::Value> {
+        num_traits::ToPrimitive::to_f64(&v)
+            .ok_or(Error::invalid_value(Unexpected::Bignum(v), &self))
     }
 
     fn visit_f64(self, v: f64) -> Result<Self::Value> {

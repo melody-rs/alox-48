@@ -6,7 +6,7 @@
 use super::{Object, RbFields, RbHash, RbString, Symbol, Userdata, Value};
 use crate::{
     ser::{Error, Kind, Result, Serialize},
-    Instance, RbArray, RbStruct, SerializerTrait, Sym,
+    BignumRef, Fixnum, Instance, RbArray, RbStruct, SerializerTrait, Sym,
 };
 
 impl Serialize for Value {
@@ -18,7 +18,8 @@ impl Serialize for Value {
             Value::Nil => serializer.serialize_nil(),
             Value::Bool(v) => serializer.serialize_bool(*v),
             Value::Float(f) => serializer.serialize_f64(*f),
-            Value::Integer(i) => serializer.serialize_i32(*i),
+            Value::Fixnum(i) => serializer.serialize_fixnum(*i),
+            Value::Bignum(i) => serializer.serialize_bignum(i.as_ref()),
             Value::String(s) => s.serialize(serializer),
             Value::Symbol(s) => s.serialize(serializer),
             Value::Array(a) => a.serialize(serializer),
@@ -86,8 +87,12 @@ impl SerializerTrait for Serializer {
         Ok(Value::Bool(v))
     }
 
-    fn serialize_i32(self, v: i32) -> Result<Self::Ok> {
-        Ok(Value::Integer(v))
+    fn serialize_fixnum(self, v: Fixnum) -> Result<Self::Ok> {
+        Ok(Value::Fixnum(v))
+    }
+
+    fn serialize_bignum(self, v: BignumRef<'_>) -> Result<Self::Ok> {
+        Ok(Value::Bignum(v.into()))
     }
 
     fn serialize_f64(self, v: f64) -> Result<Self::Ok> {

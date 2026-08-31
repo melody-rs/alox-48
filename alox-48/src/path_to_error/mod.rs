@@ -4,7 +4,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use crate::{
-    DeError, Deserialize, DeserializerTrait, SerError, Serialize, SerializerTrait, Symbol,
+    Bignum, DeError, Deserialize, DeserializerTrait, Fixnum, SerError, Serialize, SerializerTrait,
+    Symbol,
 };
 
 mod de;
@@ -34,8 +35,10 @@ pub enum Context {
     Nil,
     /// Error occurred while processing a boolean.
     Bool(bool),
-    /// Error occurred while processing an integer.
-    Int(i32),
+    /// Error occurred while processing a fixnum.
+    Fixnum(Fixnum),
+    /// Error occurred while processing a bignum.
+    Bignum(Bignum),
     /// Error occurred while processing a float.
     Float(f64),
 
@@ -188,14 +191,15 @@ impl std::fmt::Display for Trace {
 impl std::fmt::Display for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Context::{
-            Array, ArrayIndex, Bool, Class, Data, Extended, FetchingField, Field, Float, Hash,
-            HashKey, HashValue, Instance, Int, Module, Nil, Object, Regex, String, Struct, Symbol,
-            UserClass, UserData, UserMarshal, WritingField, WritingFields,
+            Array, ArrayIndex, Bignum, Bool, Class, Data, Extended, FetchingField, Field, Fixnum,
+            Float, Hash, HashKey, HashValue, Instance, Module, Nil, Object, Regex, String, Struct,
+            Symbol, UserClass, UserData, UserMarshal, WritingField, WritingFields,
         };
         match self {
             Nil => write!(f, "while processing a nil"),
             Bool(v) => write!(f, "while processing a boolean: {v}"),
-            Int(v) => write!(f, "while processing an integer: {v}"),
+            Fixnum(v) => write!(f, "while processing a fixnum: {v}"),
+            Bignum(v) => write!(f, "while processing a bignum: {v}"),
             Float(v) => write!(f, "while processing a float: {v}"),
             Hash(len) => write!(f, "while processing a hash with {len} entries",),
             HashKey(index) => write!(f, "while processing the {index} key of a hash",),

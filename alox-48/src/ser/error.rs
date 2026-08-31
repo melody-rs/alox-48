@@ -22,6 +22,8 @@ pub enum Kind {
     OvershotProvidedLen(usize, usize),
     #[error("Undershot the provided len {0} < {1}")]
     UndershotProvidedLen(usize, usize),
+    #[error("Object of length {0} is too large to be serialized (maximum allowed is 2^30 - 1)")]
+    LenOverflow(usize),
     #[error("Custom error: {0}")]
     Message(String),
     #[error("Tried to serialize a key without a value")]

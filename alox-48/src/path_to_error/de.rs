@@ -7,8 +7,8 @@
 use super::{add_context, Context, Trace};
 use crate::{
     de::{DeserializeSeed, DeserializerTrait},
-    ArrayAccess, DeResult, HashAccess, InstanceAccess, IvarAccess, Sym, Symbol, Visitor,
-    VisitorInstance, VisitorOption,
+    ArrayAccess, BignumRef, DeResult, Fixnum, HashAccess, InstanceAccess, IvarAccess, Sym, Symbol,
+    Visitor, VisitorInstance, VisitorOption,
 };
 
 /// A deserializer that tracks where errors occur.
@@ -90,8 +90,18 @@ where
         add_context!(self.inner.visit_bool(v), self.trace.push(Context::Bool(v)))
     }
 
-    fn visit_i32(self, v: i32) -> DeResult<Self::Value> {
-        add_context!(self.inner.visit_i32(v), self.trace.push(Context::Int(v)))
+    fn visit_fixnum(self, v: Fixnum) -> DeResult<Self::Value> {
+        add_context!(
+            self.inner.visit_fixnum(v),
+            self.trace.push(Context::Fixnum(v))
+        )
+    }
+
+    fn visit_bignum(self, v: BignumRef<'de>) -> DeResult<Self::Value> {
+        add_context!(
+            self.inner.visit_bignum(v),
+            self.trace.push(Context::Bignum(v.into()))
+        )
     }
 
     fn visit_f64(self, v: f64) -> DeResult<Self::Value> {
