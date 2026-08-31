@@ -313,7 +313,10 @@ impl<'de> super::DeserializerTrait<'de> for &mut Deserializer<'de> {
             Tag::Float => visitor.visit_f64(self.read_float()?),
             Tag::Bignum => {
                 let is_negative = self.cursor.next_byte()? == b'-';
-                let len = 2 * self.read_usize()?;
+                let len = self
+                    .read_usize()?
+                    .checked_mul(2)
+                    .ok_or(Error { kind: Kind::Eof })?;
                 let le_bytes = self.cursor.next_bytes_dyn(len)?;
                 if let Some(bignum) = BignumRef::from_le_bytes(is_negative, le_bytes) {
                     visitor.visit_bignum(bignum)
