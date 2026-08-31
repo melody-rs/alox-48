@@ -67,11 +67,11 @@ pub trait Visitor<'de>: Sized {
     fn visit_bool(self, v: bool) -> Result<Self::Value> {
         Err(Error::invalid_value(Unexpected::Bool(v), &self))
     }
-    /// Input contains an integer value within the interval $[-2^30, 2^30)$.
+    /// Input contains an integer value within the interval [-2<sup>30</sup>, 2<sup>30</sup>).
     fn visit_fixnum(self, v: Fixnum) -> Result<Self::Value> {
         Err(Error::invalid_value(Unexpected::Fixnum(v), &self))
     }
-    /// Input contains an integer value outside of the interval $[-2^30, 2^30)$.
+    /// Input contains an integer value outside of the interval [-2<sup>30</sup>, 2<sup>30</sup>).
     fn visit_bignum(self, v: BignumRef<'de>) -> Result<Self::Value> {
         Err(Error::invalid_value(Unexpected::Bignum(v), &self))
     }

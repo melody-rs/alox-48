@@ -43,7 +43,7 @@ pub enum Kind {
     /// A float's mantissa was too long.
     #[error("Float mantissa too long")]
     ParseFloatMantissaTooLong,
-    /// A fixnum could not be read because it was outside of the interval $[-2^30, 2^30)$.
+    /// A fixnum could not be read because it was outside of the interval [-2<sup>30</sup>, 2<sup>30</sup>).
     #[error("Failed to parse {0} as a fixnum")]
     ParseFixnumOverflow(Bignum),
     /// A float could not be converted to an integer because it was infinite or NaN.

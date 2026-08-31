@@ -5,7 +5,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /// A type representing a borrowed arbitrary-precision integer outside of the interval
-/// $[-2^30, 2^30)$.
+/// [-2<sup>30</sup>, 2<sup>30</sup>).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct BignumRef<'a> {
     /// True if the integer is less than zero, false if the integer is zero or greater than zero.
@@ -15,7 +15,7 @@ pub struct BignumRef<'a> {
 }
 
 /// A type representing an owned arbitrary-precision integer outside of the interval
-/// $[-2^30, 2^30)$.
+/// [-2<sup>30</sup>, 2<sup>30</sup>).
 #[derive(Clone, PartialEq, Eq)]
 pub struct Bignum {
     /// True if the integer is less than zero, false if the integer is zero or greater than zero.
@@ -43,8 +43,9 @@ impl<'a> From<BignumRef<'a>> for Bignum {
 }
 
 impl<'a> BignumRef<'a> {
-    /// Attempts to create a new `BignumRef` from a sign and little-endian bytes.
-    /// Will fail if the represented integer is within the interval $[-2^30, 2^30)$.
+    /// Attempts to create a new [`BignumRef`] from a sign and little-endian bytes.
+    /// Will fail if the represented integer is within the interval
+    /// [-2<sup>30</sup>, 2<sup>30</sup>).
     pub fn from_le_bytes(is_negative: bool, le_bytes: &'a [u8]) -> Option<Self> {
         let (is_negative, le_bytes) = super::canonicalize_le_bytes_ref(is_negative, le_bytes);
         let value = Self {
@@ -63,8 +64,9 @@ impl<'a> BignumRef<'a> {
 }
 
 impl Bignum {
-    /// Attempts to create a new `Bignum` from a sign and little-endian bytes.
-    /// Will fail if the represented integer is within the interval $[-2^30, 2^30)$.
+    /// Attempts to create a new [`Bignum`] from a sign and little-endian bytes.
+    /// Will fail if the represented integer is within the interval
+    /// [-2<sup>30</sup>, 2<sup>30</sup>).
     pub fn from_le_bytes(is_negative: bool, le_bytes: Vec<u8>) -> Option<Self> {
         let (is_negative, le_bytes) = super::canonicalize_le_bytes_vec(is_negative, le_bytes);
         let value = Self {
@@ -76,7 +78,7 @@ impl Bignum {
             .then_some(value)
     }
 
-    /// Borrows this object as a `BignumRef`.
+    /// Borrows this object as a [`BignumRef`].
     pub fn as_ref(&self) -> BignumRef<'_> {
         self.into()
     }

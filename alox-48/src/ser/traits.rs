@@ -35,10 +35,10 @@ pub trait Serializer: Sized {
     /// Serialize a boolean value.
     fn serialize_bool(self, v: bool) -> Result<Self::Ok>;
 
-    /// Serialize an integer value within the interval $[-2^30, 2^30)$.
+    /// Serialize an integer value within the interval [-2<sup>30</sup>, 2<sup>30</sup>).
     fn serialize_fixnum(self, v: Fixnum) -> Result<Self::Ok>;
 
-    /// Serialize an integer value outside of the interval $[-2^30, 2^30)$.
+    /// Serialize an integer value outside of the interval [-2<sup>30</sup>, 2<sup>30</sup>).
     fn serialize_bignum(self, v: BignumRef<'_>) -> Result<Self::Ok>;
 
     /// Serialize a float value.

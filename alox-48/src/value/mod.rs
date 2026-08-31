@@ -28,9 +28,9 @@ pub enum Value {
     Bool(bool),
     /// A float value.
     Float(f64),
-    /// An integer value within the interval $[-2^30, 2^30)$.
+    /// An integer value within the interval [-2<sup>30</sup>, 2<sup>30</sup>).
     Fixnum(Fixnum),
-    /// An integer value outside of the interval $[-2^30, 2^30)$.
+    /// An integer value outside of the interval [-2<sup>30</sup>, 2<sup>30</sup>).
     Bignum(Bignum),
     /// A ruby string.
     /// Because strings in ruby are not guarenteed to be utf8, [`RbString`] stores a [`Vec<u8>`] instead.
