@@ -133,9 +133,16 @@ fn parse_struct(
     let classname = reciever.class.clone().unwrap_or_else(|| ty.to_string());
     let enforce_class = if reciever.enforce_class.is_present() {
         let classname_lit = LitStr::new(&classname, ty.span());
+
+        let unexpected = if reciever.is_struct.is_present() {
+            quote! { Unexpected::Struct }
+        } else {
+            quote! { Unexpected::Class }
+        };
+
         quote! {
             if class != Sym::new(#classname_lit) {
-                return Err(DeError::invalid_type(Unexpected::Class(class), &self));
+                return Err(DeError::invalid_type(#unexpected (class), &self));
             }
         }
     } else {
@@ -167,6 +174,12 @@ fn parse_struct(
         .unwrap_or_else(|| format!("an instance of {classname}"));
     let expecting_lit = LitStr::new(&expecting_text, ty.span());
 
+    let visit_fn = if reciever.is_struct.is_present() {
+        quote! { visit_struct }
+    } else {
+        quote! { visit_object }
+    };
+
     quote! {
         #[automatically_derived]
         impl #impl_lifetimes Deserialize<'de> for #ty #ty_lifetimes {
@@ -190,7 +203,7 @@ fn parse_struct(
                         formatter.write_str(#expecting_lit)
                     }
 
-                    fn visit_object<A>(self, class: &'de Sym, mut _instance_variables: A) -> Result<Self::Value, DeError>
+                    fn #visit_fn<A>(self, class: &'de Sym, mut _instance_variables: A) -> Result<Self::Value, DeError>
                     where
                         A: IvarAccess<'de>,
                     {

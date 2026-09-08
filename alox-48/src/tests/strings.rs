@@ -1,12 +1,10 @@
+use crate::tests::marshal_output_for;
 
 #[test]
 fn deserialize() {
-    let bytes = &[
-        0x04, 0x08, 0x49, 0x22, 0x11, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x74, 0x68, 0x65, 0x72,
-        0x65, 0x21, 0x06, 0x3a, 0x06, 0x45, 0x54,
-    ];
+    let bytes = marshal_output_for("print Marshal.dump('hello there!')");
 
-    let str: &str = crate::from_bytes(bytes).unwrap();
+    let str: &str = crate::from_bytes(&bytes).unwrap();
 
     assert_eq!(str, "hello there!");
 }
@@ -24,13 +22,9 @@ fn round_trip() {
 
 #[test]
 fn weird_encoding() {
-    let bytes = &[
-        0x04, 0x08, 0x49, 0x22, 0x11, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x74, 0x68, 0x65, 0x72,
-        0x65, 0x21, 0x06, 0x3a, 0x0d, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x22, 0x09,
-        0x42, 0x69, 0x67, 0x35,
-    ];
+    let bytes = marshal_output_for("print Marshal.dump('wawa'.encode('Big5'))");
 
-    let str: crate::Instance<crate::RbString> = crate::from_bytes(bytes).unwrap();
+    let str: crate::Instance<crate::RbString> = crate::from_bytes(&bytes).unwrap();
 
     assert_eq!(
         str.encoding().unwrap().as_string().unwrap().data, // this is a mess lol, i should fix it
@@ -40,13 +34,9 @@ fn weird_encoding() {
 
 #[test]
 fn weird_encoding_round_trip() {
-    let bytes: &[_] = &[
-        0x04, 0x08, 0x49, 0x22, 0x11, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x74, 0x68, 0x65, 0x72,
-        0x65, 0x21, 0x06, 0x3a, 0x0d, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x22, 0x09,
-        0x42, 0x69, 0x67, 0x35,
-    ];
+    let bytes = marshal_output_for("print Marshal.dump('wawa'.encode('Big5'))");
 
-    let str: crate::Instance<crate::RbString> = crate::from_bytes(bytes).unwrap();
+    let str: crate::Instance<crate::RbString> = crate::from_bytes(&bytes).unwrap();
 
     let bytes2 = crate::to_bytes(&str).unwrap();
 

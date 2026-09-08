@@ -1,9 +1,10 @@
+use crate::tests::marshal_output_for;
 
 #[test]
 fn deserialize() {
-    let bytes = &[0x04, 0x08, 0x66, 0x07, 0x31, 0x35];
+    let bytes = marshal_output_for("print Marshal.dump(15.0)");
 
-    let float: f64 = crate::from_bytes(bytes).unwrap();
+    let float: f64 = crate::from_bytes(&bytes).unwrap();
 
     assert!((float - 15.0).abs() < f64::EPSILON);
 }
@@ -21,9 +22,9 @@ fn round_trip() {
 
 #[test]
 fn nan() {
-    let bytes = &[0x04, 0x08, 0x66, 0x08, 0x6e, 0x61, 0x6e];
+    let bytes = marshal_output_for("print Marshal.dump(Float::NAN)");
 
-    let float: f64 = crate::from_bytes(bytes).unwrap();
+    let float: f64 = crate::from_bytes(&bytes).unwrap();
 
     assert!(float.is_nan());
 }

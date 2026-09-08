@@ -1,14 +1,20 @@
+use crate::tests::marshal_output_for;
 
 #[test]
 fn untyped_object() {
-    let bytes = &[
-        0x04, 0x08, 0x6f, 0x3a, 0x09, 0x54, 0x65, 0x73, 0x74, 0x07, 0x3a, 0x0c, 0x40, 0x66, 0x69,
-        0x65, 0x6c, 0x64, 0x31, 0x54, 0x3a, 0x0c, 0x40, 0x66, 0x69, 0x65, 0x6c, 0x64, 0x32, 0x49,
-        0x22, 0x10, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x74, 0x68, 0x65, 0x72, 0x65, 0x06, 0x3a,
-        0x06, 0x45, 0x54,
-    ];
+    let bytes = marshal_output_for(
+        "
+    class Test
+        def initialize
+            @field1 = true
+            @field2 = 'hello there'
+        end
+    end
+    print Marshal.dump(Test.new)
+    ",
+    );
 
-    let obj: crate::Value = crate::from_bytes(bytes).unwrap();
+    let obj: crate::Value = crate::from_bytes(&bytes).unwrap();
     let obj = obj.into_object().unwrap();
 
     assert_eq!(obj.class, "Test");
@@ -17,12 +23,15 @@ fn untyped_object() {
 
 #[test]
 fn untyped_ivar_string() {
-    let bytes = &[
-        0x04, 0x08, 0x49, 0x22, 0x0b, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x21, 0x07, 0x3a, 0x06, 0x45,
-        0x54, 0x3a, 0x0c, 0x40, 0x72, 0x61, 0x6e, 0x64, 0x6f, 0x6d, 0x69, 0x01, 0x7b,
-    ];
+    let bytes = marshal_output_for(
+        "
+    str = 'hello!'
+    str.instance_variable_set(:@random, 123)
+    print Marshal.dump(str)
+    ",
+    );
 
-    let obj: crate::Value = crate::from_bytes(bytes).unwrap();
+    let obj: crate::Value = crate::from_bytes(&bytes).unwrap();
     let instance = obj.into_instance().unwrap();
 
     assert_eq!(instance.value.as_ref(), "hello!");
@@ -31,13 +40,15 @@ fn untyped_ivar_string() {
 
 #[test]
 fn untyped_ivar_array() {
-    let bytes = &[
-        0x04, 0x08, 0x49, 0x5b, 0x07, 0x49, 0x22, 0x09, 0x74, 0x65, 0x73, 0x74, 0x06, 0x3a, 0x06,
-        0x45, 0x54, 0x69, 0x01, 0x7b, 0x06, 0x3a, 0x0a, 0x40, 0x69, 0x76, 0x61, 0x72, 0x66, 0x06,
-        0x35,
-    ];
+    let bytes = marshal_output_for(
+        "
+    arr = ['test', 123]
+    arr.instance_variable_set(:@ivar, 5.0)
+    print Marshal.dump(arr)
+    ",
+    );
 
-    let obj: crate::Value = crate::from_bytes(bytes).unwrap();
+    let obj: crate::Value = crate::from_bytes(&bytes).unwrap();
     let instance = obj.into_instance().unwrap();
 
     let array = instance.value.as_array().unwrap();
@@ -56,14 +67,19 @@ fn untyped_to_borrowed() {
         field2: &'d str,
     }
 
-    let bytes = &[
-        0x04, 0x08, 0x6f, 0x3a, 0x09, 0x54, 0x65, 0x73, 0x74, 0x07, 0x3a, 0x0c, 0x40, 0x66, 0x69,
-        0x65, 0x6c, 0x64, 0x31, 0x54, 0x3a, 0x0c, 0x40, 0x66, 0x69, 0x65, 0x6c, 0x64, 0x32, 0x49,
-        0x22, 0x10, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x74, 0x68, 0x65, 0x72, 0x65, 0x06, 0x3a,
-        0x06, 0x45, 0x54,
-    ];
+    let bytes = marshal_output_for(
+        "
+    class Test
+        def initialize
+            @field1 = true
+            @field2 = 'hello there'
+        end
+    end
+    print Marshal.dump(Test.new)
+    ",
+    );
 
-    let obj: crate::Value = crate::from_bytes(bytes).unwrap();
+    let obj: crate::Value = crate::from_bytes(&bytes).unwrap();
 
     let test: Test<'_> = crate::Deserialize::deserialize(&obj).unwrap();
 

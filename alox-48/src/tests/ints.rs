@@ -1,9 +1,10 @@
+use crate::tests::marshal_output_for;
 
 #[test]
 fn deserialize() {
-    let bytes = &[0x04, 0x08, 0x69, 0x19];
+    let bytes = marshal_output_for("print Marshal.dump(20)");
 
-    let int: u8 = crate::from_bytes(bytes).unwrap();
+    let int: u8 = crate::from_bytes(&bytes).unwrap();
 
     assert_eq!(int, 20);
 }
@@ -76,9 +77,9 @@ fn round_trip_value() {
 
 #[test]
 fn negatives() {
-    let bytes = &[0x04, 0x08, 0x69, 0xfd, 0x1d, 0xf0, 0xfc];
+    let bytes = marshal_output_for("print Marshal.dump(-200_675)");
 
-    let int: i32 = crate::from_bytes(bytes).unwrap();
+    let int: i32 = crate::from_bytes(&bytes).unwrap();
 
     assert_eq!(int, -200_675);
 }

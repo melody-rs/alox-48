@@ -1,21 +1,56 @@
+use crate::tests::marshal_output_for;
 
 #[test]
-fn deserialize_borrowed() {
+fn deserialize_borrowed_class() {
     #[derive(alox_48_derive::Deserialize, alox_48_derive::Serialize, PartialEq, Debug)]
     #[marshal(alox_crate_path = "crate")]
+    #[marshal(class = "Test")]
     struct Test<'d> {
         field1: bool,
         field2: &'d str,
     }
 
-    let bytes = &[
-        0x04, 0x08, 0x6f, 0x3a, 0x09, 0x54, 0x65, 0x73, 0x74, 0x07, 0x3a, 0x0c, 0x40, 0x66, 0x69,
-        0x65, 0x6c, 0x64, 0x31, 0x54, 0x3a, 0x0c, 0x40, 0x66, 0x69, 0x65, 0x6c, 0x64, 0x32, 0x49,
-        0x22, 0x10, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x74, 0x68, 0x65, 0x72, 0x65, 0x06, 0x3a,
-        0x06, 0x45, 0x54,
-    ];
+    let bytes = marshal_output_for(
+        "
+    class Test
+        def initialize
+            @field1 = true
+            @field2 = 'hello there'
+        end
+    end
+    print Marshal.dump(Test.new)
+    ",
+    );
 
-    let obj: Test<'_> = crate::from_bytes(bytes).unwrap();
+    let obj: Test<'_> = crate::from_bytes(&bytes).unwrap();
+
+    assert_eq!(
+        obj,
+        Test {
+            field1: true,
+            field2: "hello there"
+        }
+    );
+}
+
+#[test]
+fn deserialize_borrowed_struct() {
+    #[derive(alox_48_derive::Deserialize, alox_48_derive::Serialize, PartialEq, Debug)]
+    #[marshal(alox_crate_path = "crate")]
+    #[marshal(class = "Struct::Test", is_struct)]
+    struct Test<'d> {
+        field1: bool,
+        field2: &'d str,
+    }
+
+    let bytes = marshal_output_for(
+        "
+    Test = Struct.new('Test', :field1, :field2)
+    print Marshal.dump(Test.new(true, 'hello there'))
+    ",
+    );
+
+    let obj: Test<'_> = crate::from_bytes(&bytes).unwrap();
 
     assert_eq!(
         obj,
@@ -90,11 +125,19 @@ fn userdata() {
             Self { field }
         }
     }
-    let bytes = &[
-        0x04, 0x08, 0x75, 0x3a, 0x0f, 0x4d, 0x79, 0x55, 0x73, 0x65, 0x72, 0x44, 0x61, 0x74, 0x61,
-        0x09, 0x61, 0x62, 0x63, 0x64,
-    ];
-    let data: MyUserData = crate::from_bytes(bytes).unwrap();
+
+    let bytes = marshal_output_for(
+        "
+    class MyUserData
+        def _dump(limit)
+            'abcd'
+        end
+    end
+    print Marshal.dump(MyUserData.new)
+    ",
+    );
+
+    let data: MyUserData = crate::from_bytes(&bytes).unwrap();
 
     assert_eq!(
         data,

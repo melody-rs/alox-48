@@ -1,4 +1,5 @@
-#[cfg(test)]
+#![allow(clippy::panic)]
+
 fn int_to_le_bytes<T>(int: T) -> (bool, <T as num_traits::ToBytes>::Bytes)
 where
     T: num_traits::ToBytes + num_traits::Signed + num_traits::WrappingNeg,
@@ -6,6 +7,26 @@ where
     let is_negative = int.is_negative();
     let le_bytes = if is_negative { int.wrapping_neg() } else { int }.to_le_bytes();
     (is_negative, le_bytes)
+}
+
+fn marshal_output_for(code: &str) -> Vec<u8> {
+    let ruby_output = std::process::Command::new("ruby")
+        .arg("-e")
+        .arg(code)
+        .output()
+        .unwrap();
+
+    if ruby_output.stdout.get(..2) != Some(&[0x4, 0x8]) {
+        let stdout = String::from_utf8_lossy(&ruby_output.stdout);
+        let stderr = String::from_utf8_lossy(&ruby_output.stderr);
+        panic!(
+            "ruby command did not output marshal bytes (did you print it with print?)\n
+        stdout: {stdout}\n
+        stderr: {stderr}"
+        );
+    }
+
+    ruby_output.stdout
 }
 
 mod fixnum;

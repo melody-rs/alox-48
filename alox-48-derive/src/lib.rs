@@ -28,6 +28,7 @@ struct TypeReciever {
 
     deny_unknown_fields: Flag,
     enforce_class: Flag,
+    is_struct: Flag,
 
     #[darling(rename = "default")]
     default_fn: Option<Override<Path>>,
