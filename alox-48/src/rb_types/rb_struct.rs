@@ -14,6 +14,16 @@ use crate::{
 #[derive(PartialEq, Eq, Default, Debug, Clone)]
 pub struct RbStruct {
     /// This struct's class.
+    ///
+    /// Despite Ruby having anonymous struct types,
+    /// Ruby's `Marshal` module will refuse to serialize them, hence this
+    /// being a required property!
+    ///
+    /// Often this is prefixed with `Struct::` as `Struct.new(<classname>)` will place the newly created
+    /// `Struct` type underneath `Struct` as `Struct::<classname>`.
+    ///
+    /// `Struct` class names *not* prefixed with `Struct::` are valid and will be accepted by
+    /// `alox-48`, but Ruby might choke when trying to load them.
     pub class: Symbol,
     /// The fields on this struct.
     pub fields: RbFields,

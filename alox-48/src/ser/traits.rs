@@ -63,6 +63,9 @@ pub trait Serializer: Sized {
     fn serialize_object(self, class: &Sym, len: usize) -> Result<Self::SerializeIvars>;
 
     /// Serialize a struct.
+    ///
+    /// Despite Ruby having anonymous structs, a classname is required.
+    /// Ruby's Marshal module actually rejects any anyonymous structs!
     fn serialize_struct(self, name: &Sym, len: usize) -> Result<Self::SerializeIvars>;
 
     /// Serialize a class.

@@ -91,6 +91,10 @@ struct VariantReciever {
 /// - `from`: Deserialize from a different type. That type must implement `Deserialize`.
 /// - `try_from`: Deserialize from a different type. That type must implement `TryFrom`, and its error type must implement `Display`.
 /// - `expecting`: The error message to use if deserialization fails.
+/// - `is_struct`: If the type should be deserialized as a Ruby `Struct`.
+///
+/// If using `enforce_class` and `is_struct`, you usually want to prefix the class name with `Struct::`.
+/// This is because structs in Ruby are often defined as constants inside the `Struct` class.
 ///
 /// Field attributes:
 /// - `rename`: Rename the field.
@@ -114,6 +118,11 @@ pub fn derive_deserialize(item: TokenStream) -> TokenStream {
 /// - `class`: Override the class that this type is serialized as. By default, the class is the struct name.
 /// - `into`: Serialize to a different type. That type must implement `Serialize`, and `Self` must impl `Into<T> + Clone`.
 /// - `try_into`: Serialize to a different type. That type must implement `Serialize`, and Self must impl `TryInto<T> + Clone`.
+/// - `is_struct`: If the type should be deserialized as a Ruby `Struct`.
+///
+/// If using `is_struct`, you usually want to prefix the class name with `Struct::` with the `class` attribute.
+/// It will serialize and be handled by `alox-48` just fine,
+/// Ruby might choke on your struct though as structs are often defined as constants inside the `Struct` class.
 ///
 /// Field attributes:
 /// - `rename`: Rename the field.
