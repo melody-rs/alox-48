@@ -109,13 +109,19 @@ fn parse_struct(
     let fields_len = format!("{}_usize", field_impls.len());
     let fields_len = LitInt::new(&fields_len, ty.span());
 
+    let serialize_fn = if reciever.is_struct.is_present() {
+        quote! { serialize_struct }
+    } else {
+        quote! { serialize_object }
+    };
+
     quote! {
         #[automatically_derived]
         impl < #( #impl_lifetimes ),* > Serialize for #ty < #( #ty_lifetimes ),* > {
             fn serialize<S>(&self, serializer: S) -> Result<S::Ok, SerError>
                 where S: SerializerTrait
             {
-                let mut serialize_ivars = serializer.serialize_object(&Sym::new(#classname), #fields_len)?;
+                let mut serialize_ivars = serializer.#serialize_fn(&Sym::new(#classname), #fields_len)?;
                 #(#field_impls)*
                 serialize_ivars.end()
             }
