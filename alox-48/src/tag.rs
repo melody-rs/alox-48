@@ -95,8 +95,6 @@ impl Tag {
                 | Self::True
                 | Self::False
                 | Self::Fixnum
-                | Self::Float
-                | Self::Bignum
                 | Self::Symbol
                 | Self::Symlink
                 | Self::ObjectLink
