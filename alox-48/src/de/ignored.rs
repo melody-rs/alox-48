@@ -50,10 +50,10 @@ impl<'de> Visitor<'de> for IgnoredVisitor {
         Ok(Ignored)
     }
 
-    fn visit_hash_default<A, D>(self, mut current: Continue<A, D>) -> Result<Self::Value>
+    fn visit_hash_default<A>(self, mut current: Continue<A, A::Finished>) -> Result<Self::Value>
     where
-        A: HashKeyAccess<'de, Finished = D>,
-        D: HashDefaultAccess<'de>,
+        A: HashKeyAccess<'de>,
+        A::Finished: HashDefaultAccess<'de>,
     {
         loop {
             match current {

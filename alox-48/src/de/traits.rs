@@ -85,10 +85,10 @@ pub trait Visitor<'de>: Sized {
     // Collections
 
     /// Input contains a hash.
-    fn visit_hash_default<A, D>(self, _current: Continue<A, D>) -> Result<Self::Value>
+    fn visit_hash_default<A>(self, _current: Continue<A, A::Finished>) -> Result<Self::Value>
     where
-        A: HashKeyAccess<'de, Finished = D>,
-        D: HashDefaultAccess<'de>,
+        A: HashKeyAccess<'de>,
+        A::Finished: HashDefaultAccess<'de>,
     {
         Err(Error::invalid_value(Unexpected::Hash, &self))
     }
@@ -402,6 +402,8 @@ pub trait HashKeyAccess<'de>: Sized {
     }
 
     fn len(&self) -> usize;
+
+    fn index(&self) -> usize;
 }
 
 // ditto for above
@@ -426,6 +428,8 @@ pub trait HashValueAccess<'de>: Sized {
     }
 
     fn len(&self) -> usize;
+
+    fn index(&self) -> usize;
 }
 
 pub trait HashDefaultAccess<'de>: Sized {

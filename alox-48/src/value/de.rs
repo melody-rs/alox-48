@@ -52,10 +52,10 @@ impl<'de> Visitor<'de> for ValueVisitor {
         HashVisitor.visit_hash(current).map(Value::Hash)
     }
 
-    fn visit_hash_default<A, D>(self, current: crate::Continue<A, D>) -> Result<Self::Value>
+    fn visit_hash_default<A>(self, current: crate::Continue<A, A::Finished>) -> Result<Self::Value>
     where
-        A: HashKeyAccess<'de, Finished = D>,
-        D: HashDefaultAccess<'de>,
+        A: HashKeyAccess<'de>,
+        A::Finished: HashDefaultAccess<'de>,
     {
         HashVisitor.visit_hash_default(current).map(Value::Hash)
     }
@@ -217,12 +217,15 @@ impl<'de> DeserializerTrait<'de> for &'de Value {
             Value::Symbol(s) => visitor.visit_symbol(s),
             Value::Array(array) => visitor.visit_array(ValueArrayAccess { array, index: 0 }),
             Value::Hash(RbHash { map, default: None }) => {
-                visitor.visit_hash(HashAccessImpl::next_access(map.iter()))
+                visitor.visit_hash(HashAccessImpl::<No>::next_access(map.iter(), ()))
             }
             Value::Hash(RbHash {
                 map,
                 default: Some(v),
-            }) => visitor.visit_hash_default(DefaultHashAccessImpl::next_access(map.iter(), v)),
+            }) => visitor.visit_hash_default(HashAccessImpl::<Yes>::next_access(
+                map.iter(),
+                ValueDefaultAccess(v),
+            )),
             Value::Userdata(u) => visitor.visit_user_data(&u.class, &u.data),
             Value::Object(o) => visitor.visit_object(
                 &o.class,
@@ -362,131 +365,133 @@ impl<'de> ArrayAccess<'de> for ValueArrayAccess<'de> {
 
 type Iter<'de> = indexmap::map::Iter<'de, Value, Value>;
 
-macro_rules! impl_hash_access {
-    (impl<'de> $type:ident<'de> {
-        type ValueAccess = $value:ident<'de>;
-
-        fn next_access(mut iter: Iter<'de>$(, $finish:ident: $finish_ty:ty)?) -> Continue<Self, $access:ty> {
-            Continue::Finished => $on_finish:expr
-        }
-    }) => {
-        impl<'de> $type<'de> {
-            fn next_access(mut iter: Iter<'de>$(, $finish: $finish_ty)?) -> Continue<Self, $access> {
-                match iter.next() {
-                    Some((next_key, next_value)) => Continue::Next(Self {
-                        iter,
-                        next_key,
-                        next_value,
-                        $($finish,)?
-                    }),
-                    None => Continue::Finished($on_finish),
-                }
-            }
-        }
-
-        impl<'de> HashKeyAccess<'de> for $type<'de> {
-            type ValueAccess = $value<'de>;
-            type Finished = $access;
-
-            fn next_key_seed<K>(self, seed: K) -> Result<(K::Value, Self::ValueAccess)>
-            where
-                K: DeserializeSeed<'de>,
-            {
-                let Self {
-                    iter,
-                    next_key,
-                    next_value,
-                    $($finish,)?
-                } = self;
-                seed.deserialize(next_key).map(|v| {
-                    (
-                        v,
-                        Self::ValueAccess {
-                            iter,
-                            next_value,
-                            $($finish,)?
-                        },
-                    )
-                })
-            }
-
-            fn len(&self) -> usize {
-                self.iter.len()
-            }
-        }
-
-        impl<'de, 'a> HashValueAccess<'de> for $value<'de> {
-            type KeyAccess = $type<'de>;
-            type Finished = $access;
-
-            fn next_value_seed<V>(
-                self,
-                seed: V,
-            ) -> Result<(V::Value, Continue<Self::KeyAccess, Self::Finished>)>
-            where
-                V: DeserializeSeed<'de>,
-            {
-                let Self {
-                    iter,
-                    next_value,
-                    $($finish,)?
-                } = self;
-                seed.deserialize(next_value)
-                    .map(|v| (v, Self::KeyAccess::next_access(iter $(, $finish)?)))
-            }
-
-            fn len(&self) -> usize {
-                self.iter.len()
-            }
-        }
-    };
-}
-
-struct HashAccessImpl<'de> {
+pub struct HashAccessImpl<'de, T>
+where
+    T: HasDefault<'de>,
+{
     iter: Iter<'de>,
     next_key: &'de Value,
     next_value: &'de Value,
+    finished: T::Finished,
 }
 
-struct HashValueAccessImpl<'de> {
+pub struct HashValueAccessImpl<'de, T>
+where
+    T: HasDefault<'de>,
+{
     iter: Iter<'de>,
     next_value: &'de Value,
+    finished: T::Finished,
 }
 
-impl_hash_access! {
-    impl<'de> HashAccessImpl<'de> {
-        type ValueAccess = HashValueAccessImpl<'de>;
+pub struct ValueDefaultAccess<'de>(&'de Value);
 
-        fn next_access(mut iter: Iter<'de>) -> Continue<Self, ()> {
-            Continue::Finished => ()
+pub struct Yes;
+
+pub struct No;
+
+pub trait HasDefault<'de> {
+    type Finished;
+}
+
+impl<'de> HasDefault<'de> for Yes {
+    type Finished = ValueDefaultAccess<'de>;
+}
+
+impl HasDefault<'_> for No {
+    type Finished = ();
+}
+
+impl<'de, T> HashAccessImpl<'de, T>
+where
+    T: HasDefault<'de>,
+{
+    fn next_access(mut iter: Iter<'de>, finished: T::Finished) -> Continue<Self, T::Finished> {
+        match iter.next() {
+            Some((next_key, next_value)) => Continue::Next(Self {
+                iter,
+                next_key,
+                next_value,
+                finished,
+            }),
+            None => Continue::Finished(finished),
         }
+    }
+
+    fn into_value_access(self) -> (&'de Value, HashValueAccessImpl<'de, T>) {
+        (
+            self.next_key,
+            HashValueAccessImpl {
+                iter: self.iter,
+                next_value: self.next_value,
+                finished: self.finished,
+            },
+        )
     }
 }
 
-struct DefaultHashAccessImpl<'de> {
-    iter: Iter<'de>,
-    next_key: &'de Value,
-    next_value: &'de Value,
-    default: &'de Value,
-}
-
-struct DefaultHashValueAccessImpl<'de> {
-    iter: Iter<'de>,
-    next_value: &'de Value,
-    default: &'de Value,
-}
-
-impl_hash_access! {
-    impl<'de> DefaultHashAccessImpl<'de> {
-        type ValueAccess = DefaultHashValueAccessImpl<'de>;
-
-        fn next_access(mut iter: Iter<'de>, default: &'de Value) -> Continue<Self, ValueDefaultAccess<'de>> {
-            Continue::Finished => ValueDefaultAccess(default)
-        }
+impl<'de, T> HashValueAccessImpl<'de, T>
+where
+    T: HasDefault<'de>,
+{
+    fn into_next_access(self) -> (&'de Value, Continue<HashAccessImpl<'de, T>, T::Finished>) {
+        (
+            self.next_value,
+            HashAccessImpl::next_access(self.iter, self.finished),
+        )
     }
 }
 
-struct ValueDefaultAccess<'de>(&'de Value);
+impl<'de, T> HashKeyAccess<'de> for HashAccessImpl<'de, T>
+where
+    T: HasDefault<'de>,
+{
+    type ValueAccess = HashValueAccessImpl<'de, T>;
+    type Finished = T::Finished;
+
+    fn next_key_seed<K>(self, seed: K) -> Result<(K::Value, Self::ValueAccess)>
+    where
+        K: DeserializeSeed<'de>,
+    {
+        let (next_key, access) = self.into_value_access();
+        seed.deserialize(next_key).map(|v| (v, access))
+    }
+
+    fn len(&self) -> usize {
+        self.iter.len()
+    }
+
+    fn index(&self) -> usize {
+        todo!()
+    }
+}
+
+impl<'de, T> HashValueAccess<'de> for HashValueAccessImpl<'de, T>
+where
+    T: HasDefault<'de>,
+{
+    type KeyAccess = HashAccessImpl<'de, T>;
+    type Finished = T::Finished;
+
+    fn next_value_seed<V>(
+        self,
+        seed: V,
+    ) -> Result<(V::Value, Continue<Self::KeyAccess, Self::Finished>)>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        let (next_value, access) = self.into_next_access();
+        seed.deserialize(next_value).map(|v| (v, access))
+    }
+
+    fn len(&self) -> usize {
+        self.iter.len()
+    }
+
+    fn index(&self) -> usize {
+        todo!()
+    }
+}
 
 impl<'de> HashDefaultAccess<'de> for ValueDefaultAccess<'de> {
     fn deserialize_default_seed<V>(self, seed: V) -> Result<V::Value>

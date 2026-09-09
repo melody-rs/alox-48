@@ -7,9 +7,9 @@ use std::cell::Cell;
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::{add_context, Context, Trace};
 use crate::{
-    ser::{hash, hash_default},
-    BignumRef, Fixnum, SerResult, Serialize, SerializeArray, SerializeIvars, SerializerTrait, Sym,
-    Symbol,
+    ser::HashDefaultContinue, BignumRef, Continue, Fixnum, SerResult, Serialize, SerializeArray,
+    SerializeHashDefault, SerializeHashKey, SerializeHashValue, SerializeIvars, SerializerTrait,
+    Sym, Symbol,
 };
 
 /// A serializer that tracks the path to an error.
@@ -30,28 +30,6 @@ pub struct Wrapped<'trace, X> {
 
     len: usize,
     index: usize,
-}
-
-macro_rules! map_wrapped {
-    ($this:ident, $new_inner:expr) => {
-        Wrapped {
-            inner: $new_inner,
-            trace: $this.trace,
-            len: $this.len,
-            index: $this.index,
-        }
-    };
-}
-
-macro_rules! new_wrapped_with {
-    ($this:ident, $new_inner:expr, $new_len:expr) => {
-        Wrapped {
-            inner: $new_inner,
-            trace: $this.trace,
-            len: $new_len,
-            index: 0,
-        }
-    };
 }
 
 #[derive(Debug)]
@@ -89,8 +67,8 @@ where
 {
     type Ok = S::Ok;
     type SerializeArray = Wrapped<'trace, S::SerializeArray>;
-    type SerializeHashDefault = Wrapped<'trace, S::SerializeHashDefault>;
-    type SerializeHash = Wrapped<'trace, S::SerializeHash>;
+    type SerializeHash = WrappedHashAccess<'trace, S::SerializeHash, No>;
+    type SerializeHashDefault = WrappedHashAccess<'trace, S::SerializeHashDefault, Yes>;
     type SerializeIvars = WrappedIvars<'trace, S::SerializeIvars>;
 
     fn serialize_nil(self) -> SerResult<Self::Ok> {
@@ -128,35 +106,20 @@ where
         )
     }
 
-    fn serialize_hash(self, len: usize) -> SerResult<hash::SerializeHash<Self::SerializeHash>> {
-        use hash::SerializeHash;
-
+    fn serialize_hash(self, len: usize) -> SerResult<Continue<Self::SerializeHash, Self::Ok>> {
         add_context!(
             self.serializer.serialize_hash(len),
             self.trace.push(Context::Hash(len))
         )
-        .map(|next| match next {
-            SerializeHash::Key(k) => SerializeHash::Key(new_wrapped_with!(self, k, len)),
-            SerializeHash::Finished(v) => SerializeHash::Finished(v),
-        })
+        .map(|next| Self::SerializeHash::map_access(self.trace, next))
     }
 
-    fn serialize_hash_default(
-        self,
-        len: usize,
-    ) -> SerResult<hash_default::SerializeHash<Self::SerializeHashDefault>> {
-        use hash_default::SerializeHash;
-
+    fn serialize_hash_default(self, len: usize) -> SerResult<HashDefaultContinue<Self>> {
         add_context!(
             self.serializer.serialize_hash_default(len),
             self.trace.push(Context::Hash(len))
         )
-        .map(|next| match next {
-            SerializeHash::Key(k) => SerializeHash::Key(new_wrapped_with!(self, k, len)),
-            SerializeHash::DefaultValue(d) => {
-                SerializeHash::DefaultValue(new_wrapped_with!(self, d, len))
-            }
-        })
+        .map(|next| Self::SerializeHashDefault::map_access(self.trace, next))
     }
 
     fn serialize_array(self, len: usize) -> SerResult<Self::SerializeArray> {
@@ -372,166 +335,199 @@ where
     }
 }
 
-mod hash_impl {
-    use std::cell::Cell;
+pub trait HasDefault<X>
+where
+    X: SerializeHashKey,
+{
+    type Finished<'a>;
 
-    use super::{add_context, Context, Wrapped, WrappedSerialize};
+    fn map_finished(trace: &mut Trace, finished: X::Finished) -> Self::Finished<'_>;
+}
 
-    use crate::ser::hash::{SerializeHash, SerializeHashKey, SerializeHashValue};
-    use crate::{SerResult, Serialize};
+pub struct Yes;
 
-    impl<'a, X> SerializeHashKey for Wrapped<'a, X>
-    where
-        X: SerializeHashKey,
-    {
-        type SerializeValue = Wrapped<'a, X::SerializeValue>;
-        type Ok = X::Ok;
+impl<X> HasDefault<X> for Yes
+where
+    X: SerializeHashKey,
+    X::Finished: SerializeHashDefault,
+{
+    type Finished<'a> = WrappedHashDefault<'a, X::Finished>;
 
-        fn serialize_key<K>(self, k: &K) -> SerResult<Self::SerializeValue>
-        where
-            K: Serialize + ?Sized,
-        {
-            let trace = Cell::default();
-            let wrapped = WrappedSerialize {
-                inner: k,
-                trace: &trace,
-            };
-
-            add_context!(self.inner.serialize_key(&wrapped), {
-                self.trace.push(Context::Hash(self.len));
-                let trace = trace.into_inner();
-                self.trace.context.extend(trace.context);
-                self.trace.push(Context::HashKey(self.index));
-            })
-            .map(|access| map_wrapped!(self, access))
-        }
-    }
-
-    impl<'a, X> SerializeHashValue for Wrapped<'a, X>
-    where
-        X: SerializeHashValue,
-    {
-        type SerializeKey = Wrapped<'a, X::SerializeKey>;
-        type Ok = X::Ok;
-
-        fn serialize_value<V>(mut self, v: &V) -> SerResult<SerializeHash<Self::SerializeKey>>
-        where
-            V: Serialize + ?Sized,
-        {
-            let trace = Cell::default();
-            let wrapped = WrappedSerialize {
-                inner: v,
-                trace: &trace,
-            };
-
-            self.index += 1;
-            add_context!(self.inner.serialize_value(&wrapped), {
-                self.trace.push(Context::Hash(self.len));
-                let trace = trace.into_inner();
-                self.trace.context.extend(trace.context);
-                self.trace.push(Context::HashValue(self.index - 1));
-            })
-            .map(|next| match next {
-                SerializeHash::Key(k) => SerializeHash::Key(map_wrapped!(self, k)),
-                SerializeHash::Finished(v) => SerializeHash::Finished(v),
-            })
+    fn map_finished(trace: &mut Trace, finished: X::Finished) -> Self::Finished<'_> {
+        WrappedHashDefault {
+            trace,
+            inner: finished,
         }
     }
 }
 
-mod hash_default_impl {
-    use std::cell::Cell;
+pub struct No;
 
-    use super::{add_context, Context, Wrapped, WrappedSerialize};
+impl<X> HasDefault<X> for No
+where
+    X: SerializeHashKey,
+{
+    type Finished<'a> = X::Finished;
 
-    use crate::ser::hash_default::{
-        SerializeHash, SerializeHashDefault, SerializeHashKey, SerializeHashValue,
-    };
-    use crate::{SerResult, Serialize};
+    fn map_finished(_: &mut Trace, finished: X::Finished) -> Self::Finished<'_> {
+        finished
+    }
+}
 
-    impl<'a, X> SerializeHashKey for Wrapped<'a, X>
-    where
-        X: SerializeHashKey,
-    {
-        type SerializeDefault = Wrapped<'a, X::SerializeDefault>;
-        type SerializeValue = Wrapped<'a, X::SerializeValue>;
-        type Ok = X::Ok;
+pub struct WrappedHashAccess<'trace, X, T> {
+    inner: X,
+    trace: &'trace mut Trace,
+    marker: std::marker::PhantomData<T>,
+}
 
-        fn serialize_key<K>(self, k: &K) -> SerResult<Self::SerializeValue>
-        where
-            K: Serialize + ?Sized,
-        {
-            let trace = Cell::default();
-            let wrapped = WrappedSerialize {
-                inner: k,
-                trace: &trace,
-            };
-
-            add_context!(self.inner.serialize_key(&wrapped), {
-                self.trace.push(Context::Hash(self.len));
-                let trace = trace.into_inner();
-                self.trace.context.extend(trace.context);
-                self.trace.push(Context::HashKey(self.index));
-            })
-            .map(|access| map_wrapped!(self, access))
+impl<'trace, X, T> WrappedHashAccess<'trace, X, T>
+where
+    X: SerializeHashKey,
+    T: HasDefault<X>,
+{
+    fn new(trace: &'trace mut Trace, access: X) -> Self {
+        Self {
+            inner: access,
+            trace,
+            marker: std::marker::PhantomData,
         }
     }
 
-    impl<'a, X> SerializeHashValue for Wrapped<'a, X>
-    where
-        X: SerializeHashValue,
-    {
-        type SerializeKey = Wrapped<'a, X::SerializeKey>;
-        type Ok = X::Ok;
-
-        fn serialize_value<V>(mut self, v: &V) -> SerResult<SerializeHash<Self::SerializeKey>>
-        where
-            V: Serialize + ?Sized,
-        {
-            let trace = Cell::default();
-            let wrapped = WrappedSerialize {
-                inner: v,
-                trace: &trace,
-            };
-
-            self.index += 1;
-            add_context!(self.inner.serialize_value(&wrapped), {
-                self.trace.push(Context::Hash(self.len));
-                let trace = trace.into_inner();
-                self.trace.context.extend(trace.context);
-                self.trace.push(Context::HashValue(self.index - 1));
-            })
-            .map(|next| match next {
-                SerializeHash::Key(k) => SerializeHash::Key(map_wrapped!(self, k)),
-                SerializeHash::DefaultValue(d) => {
-                    SerializeHash::DefaultValue(map_wrapped!(self, d))
-                }
-            })
+    fn map_access(
+        trace: &'trace mut Trace,
+        access: Continue<X, X::Finished>,
+    ) -> Continue<Self, T::Finished<'trace>> {
+        match access {
+            Continue::Next(access) => Continue::Next(Self::new(trace, access)),
+            Continue::Finished(access) => Continue::Finished(T::map_finished(trace, access)),
         }
     }
+}
 
-    impl<X> SerializeHashDefault for Wrapped<'_, X>
+impl<'a, X, T> SerializeHashKey for WrappedHashAccess<'a, X, T>
+where
+    X: SerializeHashKey,
+    T: HasDefault<X>,
+{
+    type SerializeValue = WrappedHashValueAccess<'a, X::SerializeValue, T>;
+    type Finished = T::Finished<'a>;
+
+    fn serialize_key<K>(self, k: &K) -> SerResult<Self::SerializeValue>
     where
-        X: SerializeHashDefault,
+        K: Serialize + ?Sized,
     {
-        type Ok = X::Ok;
+        let trace = Cell::default();
+        let wrapped = WrappedSerialize {
+            inner: k,
+            trace: &trace,
+        };
 
-        fn serialize_default<V>(self, v: &V) -> SerResult<Self::Ok>
-        where
-            V: Serialize + ?Sized,
-        {
-            let trace = Cell::default();
-            let wrapped = WrappedSerialize {
-                inner: v,
-                trace: &trace,
-            };
+        let len = self.inner.len();
+        let index = self.inner.index();
 
-            add_context!(self.inner.serialize_default(&wrapped), {
-                let trace = trace.into_inner();
-                self.trace.context.extend(trace.context);
-                self.trace.push(Context::HashDefault);
-            })
+        add_context!(self.inner.serialize_key(&wrapped), {
+            self.trace.push(Context::Hash(len));
+            let trace = trace.into_inner();
+            self.trace.context.extend(trace.context);
+            self.trace.push(Context::HashKey(index));
+        })
+        .map(|access| WrappedHashValueAccess::new(self.trace, access))
+    }
+
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn index(&self) -> usize {
+        self.inner.index()
+    }
+}
+
+pub struct WrappedHashValueAccess<'trace, X, T> {
+    inner: X,
+    trace: &'trace mut Trace,
+    marker: std::marker::PhantomData<T>,
+}
+
+impl<'trace, X, T> WrappedHashValueAccess<'trace, X, T>
+where
+    X: SerializeHashValue,
+    T: HasDefault<X::SerializeKey>,
+{
+    fn new(trace: &'trace mut Trace, access: X) -> Self {
+        Self {
+            inner: access,
+            trace,
+            marker: std::marker::PhantomData,
         }
+    }
+}
+
+impl<'a, X, T> SerializeHashValue for WrappedHashValueAccess<'a, X, T>
+where
+    X: SerializeHashValue,
+    T: HasDefault<X::SerializeKey>,
+{
+    type SerializeKey = WrappedHashAccess<'a, X::SerializeKey, T>;
+    type Finished = T::Finished<'a>;
+
+    fn serialize_value<V>(self, v: &V) -> SerResult<Continue<Self::SerializeKey, Self::Finished>>
+    where
+        V: Serialize + ?Sized,
+    {
+        let trace = Cell::default();
+        let wrapped = WrappedSerialize {
+            inner: v,
+            trace: &trace,
+        };
+
+        let len = self.inner.len();
+        let index = self.inner.index();
+
+        add_context!(self.inner.serialize_value(&wrapped), {
+            self.trace.push(Context::Hash(len));
+            let trace = trace.into_inner();
+            self.trace.context.extend(trace.context);
+            self.trace.push(Context::HashValue(index));
+        })
+        .map(|access| WrappedHashAccess::map_access(self.trace, access))
+    }
+
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn index(&self) -> usize {
+        self.inner.index()
+    }
+}
+
+pub struct WrappedHashDefault<'trace, X> {
+    inner: X,
+    trace: &'trace mut Trace,
+}
+
+impl<X> SerializeHashDefault for WrappedHashDefault<'_, X>
+where
+    X: SerializeHashDefault,
+{
+    type Ok = X::Ok;
+
+    fn serialize_default<V>(self, v: &V) -> SerResult<Self::Ok>
+    where
+        V: Serialize + ?Sized,
+    {
+        let trace = Cell::default();
+        let wrapped = WrappedSerialize {
+            inner: v,
+            trace: &trace,
+        };
+
+        add_context!(self.inner.serialize_default(&wrapped), {
+            let trace = trace.into_inner();
+            self.trace.context.extend(trace.context);
+            self.trace.push(Context::HashDefault);
+        })
     }
 }
 

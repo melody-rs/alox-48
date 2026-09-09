@@ -109,6 +109,20 @@ impl<N, F> Continue<N, F> {
     pub fn is_finished(&self) -> bool {
         matches!(self, Continue::Finished(_))
     }
+
+    pub fn map_next<U>(self, map_fn: impl FnOnce(N) -> U) -> Continue<U, F> {
+        match self {
+            Self::Next(n) => Continue::Next(map_fn(n)),
+            Self::Finished(f) => Continue::Finished(f),
+        }
+    }
+
+    pub fn map_finished<U>(self, map_fn: impl FnOnce(F) -> U) -> Continue<N, U> {
+        match self {
+            Self::Next(n) => Continue::Next(n),
+            Self::Finished(f) => Continue::Finished(map_fn(f)),
+        }
+    }
 }
 
 mod rb_types;
@@ -120,14 +134,15 @@ pub use rb_types::{
 
 #[doc(inline)]
 pub use de::{
-    ArrayAccess, Deserialize, Deserializer, DeserializerTrait, Error as DeError, HashDefaultAccess,
-    HashKeyAccess, HashValueAccess, InstanceAccess, IvarAccess, Result as DeResult, Visitor,
-    VisitorInstance, VisitorOption,
+    ArrayAccess, Deserialize, DeserializeSeed, Deserializer, DeserializerTrait, Error as DeError,
+    HashDefaultAccess, HashKeyAccess, HashValueAccess, InstanceAccess, IvarAccess,
+    Result as DeResult, Visitor, VisitorInstance, VisitorOption,
 };
 #[doc(inline)]
 pub use ser::{
     ByteString as SerializeByteString, Error as SerError, Result as SerResult, Serialize,
-    SerializeArray, SerializeIvars, Serializer, SerializerTrait,
+    SerializeArray, SerializeHashDefault, SerializeHashKey, SerializeHashValue, SerializeIvars,
+    Serializer, SerializerTrait,
 };
 
 #[cfg(feature = "derive")]

@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use crate::{
-    ser::{hash, hash_default},
-    Continue, Deserialize, HashDefaultAccess, HashKeyAccess, Serialize, Value, Visitor,
+    Continue, Deserialize, HashDefaultAccess, HashKeyAccess, Serialize, SerializeHashDefault,
+    SerializeHashKey, Value, Visitor,
 };
 use indexmap::IndexMap;
 
@@ -164,10 +164,13 @@ impl<'de> Visitor<'de> for HashVisitor {
         Ok(hash)
     }
 
-    fn visit_hash_default<A, D>(self, mut current: Continue<A, D>) -> crate::DeResult<Self::Value>
+    fn visit_hash_default<A>(
+        self,
+        mut current: Continue<A, A::Finished>,
+    ) -> crate::DeResult<Self::Value>
     where
-        A: HashKeyAccess<'de, Finished = D>,
-        D: HashDefaultAccess<'de>,
+        A: HashKeyAccess<'de>,
+        A::Finished: HashDefaultAccess<'de>,
     {
         let mut hash = RbHash::with_capacity(current.len());
 
@@ -201,35 +204,31 @@ fn serialize_with_default<S: crate::SerializerTrait>(
     map: &ValueMap,
     default: &Value,
 ) -> crate::SerResult<S::Ok> {
-    use hash_default::{SerializeHashDefault, SerializeHashKey};
-
     let mut current = serializer.serialize_hash_default(map.len())?;
     let mut iter = map.iter();
 
     loop {
         match current {
-            hash_default::SerializeHash::Key(next) => {
+            Continue::Next(next) => {
                 let (k, v) = iter.next().expect("should be a next value");
                 current = next.serialize_entry(k, v)?;
             }
-            hash_default::SerializeHash::DefaultValue(d) => break d.serialize_default(default),
+            Continue::Finished(d) => break d.serialize_default(default),
         }
     }
 }
 
 fn serialize<S: crate::SerializerTrait>(serializer: S, map: &ValueMap) -> crate::SerResult<S::Ok> {
-    use hash::SerializeHashKey;
-
     let mut current = serializer.serialize_hash(map.len())?;
     let mut iter = map.iter();
 
     loop {
         match current {
-            hash::SerializeHash::Key(next) => {
+            Continue::Next(next) => {
                 let (k, v) = iter.next().expect("should be a next value");
                 current = next.serialize_entry(k, v)?;
             }
-            hash::SerializeHash::Finished(v) => break Ok(v),
+            Continue::Finished(v) => break Ok(v),
         }
     }
 }
