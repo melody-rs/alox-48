@@ -10,16 +10,25 @@ mod bignum;
 mod fixnum;
 mod instance;
 mod object;
+mod rb_hash;
 mod rb_string;
 mod rb_struct;
 mod sym;
 mod symbol;
 mod userdata;
 
+pub(crate) use instance::InstanceVisitor;
+pub(crate) use object::ObjectVisitor;
+pub(crate) use rb_hash::HashVisitor;
+pub(crate) use rb_string::StringVisitor;
+pub(crate) use rb_struct::StructVisitor;
+pub(crate) use userdata::UserdataVisitor;
+
 pub use bignum::{Bignum, BignumRef};
 pub use fixnum::Fixnum;
 pub use instance::Instance;
 pub use object::Object;
+pub use rb_hash::RbHash;
 pub use rb_string::RbString;
 pub use rb_struct::RbStruct;
 pub use sym::Sym;
@@ -28,8 +37,6 @@ pub use userdata::Userdata;
 
 /// Shorthand type alias for a ruby array.
 pub type RbArray = Vec<Value>;
-/// Shorthand type alias for a ruby hash.
-pub type RbHash = IndexMap<Value, Value>;
 
 /// A type alias used to represent fields of objects.
 /// All objects store a [`Symbol`] to represent the key for instance variable, and we do that here too.

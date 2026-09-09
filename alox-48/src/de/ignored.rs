@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::{traits::InstanceAccess, Deserialize, Result, Visitor};
-use crate::{BignumRef, DeserializerTrait, Fixnum, IvarAccess, Sym};
+use crate::{de::HashDefaultAccess, BignumRef, DeserializerTrait, Fixnum, IvarAccess, Sym};
 
 /// A type that implements deserialize which ignores all values.
 #[derive(Clone, Copy, Debug, Default)]
@@ -35,13 +35,21 @@ impl<'de> Visitor<'de> for IgnoredVisitor {
         Ok(Ignored)
     }
 
-    fn visit_hash<A>(self, mut map: A) -> Result<Self::Value>
+    fn visit_hash<A>(self, mut current: super::HashAccess<'de, A>) -> Result<Self::Value>
     where
-        A: crate::HashAccess<'de>,
+        A: super::HashKeyAccess<'de>,
     {
-        while let Some((Ignored, Ignored)) = map.next_entry()? {}
+        while let super::HashAccess::Key(access) = current {
+            let (_, _, next) = access.next_entry::<Ignored, Ignored>()?;
+            current = next;
+        }
+        if let super::HashAccess::DefaultValue(access) = current {
+            access.deserialize_default::<Ignored>()?;
+        }
+
         Ok(Ignored)
     }
+
     fn visit_array<A>(self, mut array: A) -> Result<Self::Value>
     where
         A: crate::ArrayAccess<'de>,
@@ -109,6 +117,13 @@ impl<'de> Visitor<'de> for IgnoredVisitor {
     }
 
     fn visit_user_marshal<D>(self, _class: &'de Sym, deserializer: D) -> Result<Self::Value>
+    where
+        D: DeserializerTrait<'de>,
+    {
+        deserializer.deserialize(IgnoredVisitor)
+    }
+
+    fn visit_data<D>(self, _class: &'de Sym, deserializer: D) -> Result<Self::Value>
     where
         D: DeserializerTrait<'de>,
     {

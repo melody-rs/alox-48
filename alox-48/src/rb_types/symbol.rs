@@ -170,7 +170,7 @@ impl std::ops::Deref for Symbol {
     }
 }
 
-struct SymbolVisitor;
+pub(crate) struct SymbolVisitor;
 
 impl<'de> Visitor<'de> for SymbolVisitor {
     type Value = Symbol;

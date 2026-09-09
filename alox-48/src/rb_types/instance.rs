@@ -20,7 +20,26 @@ pub struct Instance<T> {
     pub fields: RbFields,
 }
 
-struct InstanceVisitor<T>(PhantomData<T>);
+// deref definitely makes sense here,
+// Instance<T> acts effectively as a T.
+// the only methods that might conflict we have
+// are implemented on a concrete type (RbString) which wouldn't have
+// those methods anyway
+impl<T> std::ops::Deref for Instance<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
+impl<T> std::ops::DerefMut for Instance<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.value
+    }
+}
+
+pub(crate) struct InstanceVisitor<T>(pub(crate) PhantomData<T>);
 
 impl<'de, T> VisitorInstance<'de> for InstanceVisitor<T>
 where
@@ -85,13 +104,13 @@ where
 
 impl<T> Instance<T> {
     /// Take the inner value of this instance.
-    pub fn into_inner(self) -> T {
-        self.value
+    pub fn into_inner(this: Self) -> T {
+        this.value
     }
 
     /// Splits this string into its constituants.
-    pub fn into_parts(self) -> (T, RbFields) {
-        (self.value, self.fields)
+    pub fn into_parts(this: Self) -> (T, RbFields) {
+        (this.value, this.fields)
     }
 }
 

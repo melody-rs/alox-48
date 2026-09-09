@@ -9,7 +9,10 @@
 #![allow(clippy::cast_possible_wrap)]
 #![allow(clippy::cast_lossless)]
 
-use super::{ignored::Ignored, DeserializeSeed, Error, Kind, Result};
+use super::{
+    ignored::Ignored, DeserializeSeed, Error, HashAccess, HashDefaultAccess, HashKeyAccess,
+    HashValueAccess, Kind, Result,
+};
 use crate::{tag::Tag, BignumRef, Deserialize, Fixnum, FromPrimitive, Sym, Visitor};
 
 /// The alox-48 deserializer.
@@ -48,13 +51,6 @@ struct ArrayAccess<'de, 'a> {
     deserializer: &'a mut Deserializer<'de>,
     len: usize,
     index: &'a mut usize,
-}
-
-struct HashAccess<'de, 'a> {
-    deserializer: &'a mut Deserializer<'de>,
-    len: usize,
-    index: &'a mut usize,
-    state: MapState,
 }
 
 enum MapState {
@@ -350,24 +346,24 @@ impl<'de> super::DeserializerTrait<'de> for &mut Deserializer<'de> {
 
                 Ok(result)
             }
-            Tag::Hash => {
+            tag @ (Tag::Hash | Tag::HashDefault) => {
                 let len = self.read_usize()?;
-                let mut index = 0;
 
-                let result = visitor.visit_hash(HashAccess {
-                    deserializer: self,
-                    len,
-                    index: &mut index,
-                    state: MapState::Value, // we want to enforce getting a key next so we set the state to value
-                })?;
+                // annoyingly, this sort of has an issue where we know the concrete type here. oh well
+                let mut access = HashAccessImpl::new(self, len, tag == Tag::HashDefault);
+                let mut current = access.next_access();
 
-                // Deserialize remaining elements that weren't deserialized
-                while index < len {
-                    index += 1;
-                    // Key
-                    Ignored::deserialize(&mut *self)?;
-                    // Value
-                    Ignored::deserialize(&mut *self)?;
+                let result = visitor.visit_hash(current)?;
+
+                current = access.next_access();
+
+                // Consume remaining elements that weren't deserialized
+                while let HashAccess::Key(a) = current {
+                    let (_, _, next) = a.next_entry::<Ignored, Ignored>()?;
+                    current = next;
+                }
+                if let HashAccess::DefaultValue(v) = current {
+                    v.deserialize_default::<Ignored>()?;
                 }
 
                 Ok(result)
@@ -452,35 +448,6 @@ impl<'de> super::DeserializerTrait<'de> for &mut Deserializer<'de> {
                 let data = self.read_bytes_len()?;
 
                 visitor.visit_user_data(class, data)
-            }
-            // FIXME: this ignores default hash values. we should fix this?
-            Tag::HashDefault => {
-                let len = self.read_usize()?;
-                let mut index = 0;
-
-                let result = visitor.visit_hash(HashAccess {
-                    deserializer: self,
-                    len,
-                    index: &mut index,
-                    state: MapState::Value, // we want to enforce getting a key next so we set the state to value
-                });
-
-                // Deserialize remaining elements that weren't deserialized
-                while index < len {
-                    index += 1;
-                    // Key
-                    Ignored::deserialize(&mut *self)?;
-                    // Value
-                    Ignored::deserialize(&mut *self)?;
-                }
-
-                // Ignore the default value.
-                // This should work.
-                // Probably.
-                // :)
-                Ignored::deserialize(&mut *self)?;
-
-                result
             }
             Tag::UserClass => {
                 let class = self.read_symbol_either()?;
@@ -685,43 +652,42 @@ impl<'de> super::ArrayAccess<'de> for ArrayAccess<'de, '_> {
     }
 }
 
-impl<'de> super::HashAccess<'de> for HashAccess<'de, '_> {
-    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
+struct HashAccessImpl<'de, 'a> {
+    deserializer: &'a mut Deserializer<'de>,
+    // current index
+    index: usize,
+    len: usize,
+    // if there is a default value present
+    has_default: bool,
+}
+
+impl<'de, 'a> HashAccessImpl<'de, 'a> {
+    fn new(deserializer: &'a mut Deserializer<'de>, len: usize, has_default: bool) -> Self {
+        Self {
+            deserializer,
+            index: 0,
+            len,
+            has_default,
+        }
+    }
+
+    fn next_access(&mut self) -> HashAccess<'de, &mut Self> {
+        match (self.index >= self.len, self.has_default) {
+            (false, _) => HashAccess::Key(self),
+            (true, false) => HashAccess::Finished,
+            (true, true) => HashAccess::DefaultValue(self),
+        }
+    }
+}
+
+impl<'de> HashKeyAccess<'de> for &mut HashAccessImpl<'de, '_> {
+    type ValueAccess = Self;
+
+    fn next_key_seed<K>(self, seed: K) -> Result<(K::Value, Self::ValueAccess)>
     where
         K: DeserializeSeed<'de>,
     {
-        if *self.index >= self.len {
-            return Ok(None);
-        }
-
-        match self.state {
-            MapState::Key => {
-                return Err(Error {
-                    kind: Kind::KeyAfterKey,
-                })
-            }
-            MapState::Value => self.state = MapState::Key,
-        }
-
-        *self.index += 1;
-
-        seed.deserialize(&mut *self.deserializer).map(Some)
-    }
-
-    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
-    where
-        V: DeserializeSeed<'de>,
-    {
-        match self.state {
-            MapState::Value => {
-                return Err(Error {
-                    kind: Kind::ValueAfterValue,
-                })
-            }
-            MapState::Key => self.state = MapState::Value,
-        }
-
-        seed.deserialize(&mut *self.deserializer)
+        seed.deserialize(&mut *self.deserializer).map(|v| (v, self))
     }
 
     fn len(&self) -> usize {
@@ -729,6 +695,37 @@ impl<'de> super::HashAccess<'de> for HashAccess<'de, '_> {
     }
 
     fn index(&self) -> usize {
-        *self.index
+        self.index
+    }
+}
+
+impl<'de> HashValueAccess<'de> for &mut HashAccessImpl<'de, '_> {
+    type KeyAccess = Self;
+    type DefaultAccess = Self;
+
+    fn next_value_seed<V>(self, seed: V) -> Result<(V::Value, HashAccess<'de, Self::KeyAccess>)>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        self.index += 1;
+        seed.deserialize(&mut *self.deserializer)
+            .map(|v| (v, self.next_access()))
+    }
+
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn index(&self) -> usize {
+        self.index
+    }
+}
+
+impl<'de> HashDefaultAccess<'de> for &mut HashAccessImpl<'de, '_> {
+    fn deserialize_default_seed<V>(self, seed: V) -> Result<V::Value>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        seed.deserialize(&mut *self.deserializer)
     }
 }

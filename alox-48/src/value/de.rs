@@ -4,10 +4,16 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use crate::{
-    de::{DeserializeSeed, Error, Kind, Result},
-    ArrayAccess, BignumRef, Deserialize, DeserializerTrait, Fixnum, HashAccess, Instance,
-    InstanceAccess, IvarAccess, Object, RbFields, RbHash, RbString, Sym, Userdata, Value, Visitor,
-    VisitorInstance, VisitorOption,
+    de::{
+        ArrayAccess, Deserialize, DeserializeSeed, DeserializerTrait, Error, HashAccess,
+        HashDefaultAccess, HashKeyAccess, HashValueAccess, InstanceAccess, IvarAccess, Kind,
+        Result, Visitor, VisitorInstance, VisitorOption,
+    },
+    rb_types::{
+        BignumRef, Fixnum, HashVisitor, InstanceVisitor, ObjectVisitor, RbFields, RbHash, RbString,
+        StringVisitor, StructVisitor, Sym, UserdataVisitor,
+    },
+    Value,
 };
 
 struct ValueVisitor;
@@ -39,15 +45,11 @@ impl<'de> Visitor<'de> for ValueVisitor {
         Ok(Value::Float(v))
     }
 
-    fn visit_hash<A>(self, mut map: A) -> Result<Self::Value>
+    fn visit_hash<A>(self, current: HashAccess<'de, A>) -> Result<Self::Value>
     where
-        A: HashAccess<'de>,
+        A: HashKeyAccess<'de>,
     {
-        let mut hash = RbHash::with_capacity(map.len());
-        while let Some((k, v)) = map.next_entry()? {
-            hash.insert(k, v);
-        }
-        Ok(Value::Hash(hash))
+        HashVisitor.visit_hash(current).map(Value::Hash)
     }
 
     fn visit_array<A>(self, mut access: A) -> Result<Self::Value>
@@ -62,9 +64,7 @@ impl<'de> Visitor<'de> for ValueVisitor {
     }
 
     fn visit_string(self, string: &'de [u8]) -> Result<Self::Value> {
-        Ok(Value::String(RbString {
-            data: string.to_vec(),
-        }))
+        StringVisitor.visit_string(string).map(Value::String)
     }
 
     fn visit_symbol(self, symbol: &'de Sym) -> Result<Self::Value> {
@@ -78,32 +78,22 @@ impl<'de> Visitor<'de> for ValueVisitor {
         })
     }
 
-    fn visit_object<A>(self, class: &'de Sym, mut instance_variables: A) -> Result<Self::Value>
+    fn visit_object<A>(self, class: &'de Sym, instance_variables: A) -> Result<Self::Value>
     where
         A: IvarAccess<'de>,
     {
-        let mut fields = RbFields::with_capacity(instance_variables.len());
-        while let Some((k, v)) = instance_variables.next_entry()? {
-            fields.insert(k.to_symbol(), v);
-        }
-        Ok(Value::Object(Object {
-            class: class.to_symbol(),
-            fields,
-        }))
+        ObjectVisitor
+            .visit_object(class, instance_variables)
+            .map(Value::Object)
     }
 
-    fn visit_struct<A>(self, name: &'de Sym, mut members: A) -> Result<Self::Value>
+    fn visit_struct<A>(self, name: &'de Sym, members: A) -> Result<Self::Value>
     where
         A: IvarAccess<'de>,
     {
-        let mut fields = RbFields::with_capacity(members.len());
-        while let Some((k, v)) = members.next_entry()? {
-            fields.insert(k.to_symbol(), v);
-        }
-        Ok(Value::RbStruct(crate::RbStruct {
-            class: name.to_symbol(),
-            fields,
-        }))
+        StructVisitor
+            .visit_struct(name, members)
+            .map(Value::RbStruct)
     }
 
     fn visit_class(self, class: &'de Sym) -> Result<Self::Value> {
@@ -118,17 +108,9 @@ impl<'de> Visitor<'de> for ValueVisitor {
     where
         A: InstanceAccess<'de>,
     {
-        let (value, mut instance_fields) = instance.value()?;
-        let mut fields = RbFields::with_capacity(instance_fields.len());
-        while let Some((field, value)) = instance_fields.next_entry()? {
-            fields.insert(field.to_symbol(), value);
-        }
-        let instance = Instance {
-            value: Box::new(value),
-            fields,
-        };
-
-        Ok(Value::Instance(instance))
+        InstanceVisitor(std::marker::PhantomData)
+            .visit_instance(instance)
+            .map(Value::Instance)
     }
 
     fn visit_extended<D>(self, module: &'de Sym, deserializer: D) -> Result<Self::Value>
@@ -154,10 +136,9 @@ impl<'de> Visitor<'de> for ValueVisitor {
     }
 
     fn visit_user_data(self, class: &'de Sym, data: &'de [u8]) -> Result<Self::Value> {
-        Ok(Value::Userdata(Userdata {
-            class: class.to_symbol(),
-            data: data.to_vec(),
-        }))
+        UserdataVisitor
+            .visit_user_data(class, data)
+            .map(Value::Userdata)
     }
 
     fn visit_user_marshal<D>(self, class: &'de Sym, deserializer: D) -> Result<Self::Value>
@@ -203,20 +184,14 @@ struct ValueIVarAccess<'de> {
     state: MapState,
 }
 
-struct ValueArrayAccess<'de> {
-    array: &'de [Value],
-    index: usize,
-}
-
-struct ValueHashAccess<'de> {
-    hash: &'de RbHash,
-    index: usize,
-    state: MapState,
-}
-
 enum MapState {
     Key,
     Value,
+}
+
+struct ValueArrayAccess<'de> {
+    array: &'de [Value],
+    index: usize,
 }
 
 impl<'de> DeserializerTrait<'de> for &'de Value {
@@ -233,11 +208,7 @@ impl<'de> DeserializerTrait<'de> for &'de Value {
             Value::String(s) => visitor.visit_string(&s.data),
             Value::Symbol(s) => visitor.visit_symbol(s),
             Value::Array(array) => visitor.visit_array(ValueArrayAccess { array, index: 0 }),
-            Value::Hash(hash) => visitor.visit_hash(ValueHashAccess {
-                hash,
-                index: 0,
-                state: MapState::Value, // we want to enforce getting a key next so we set the state to value
-            }),
+            Value::Hash(hash) => visitor.visit_hash(ValueHashAccess::new(hash).into_next_access()),
             Value::Userdata(u) => visitor.visit_user_data(&u.class, &u.data),
             Value::Object(o) => visitor.visit_object(
                 &o.class,
@@ -375,45 +346,81 @@ impl<'de> ArrayAccess<'de> for ValueArrayAccess<'de> {
     }
 }
 
-impl<'de> HashAccess<'de> for ValueHashAccess<'de> {
-    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
+struct ValueHashAccess<'de> {
+    hash: &'de RbHash,
+    index: usize,
+}
+
+struct ValueDefaultAccess<'de>(&'de Value);
+
+impl<'de> ValueHashAccess<'de> {
+    fn new(hash: &'de RbHash) -> Self {
+        Self { hash, index: 0 }
+    }
+
+    fn into_next_access(self) -> HashAccess<'de, Self> {
+        match (
+            self.index >= self.hash.map.len(),
+            self.hash.default.as_deref(),
+        ) {
+            (false, _) => HashAccess::Key(self),
+            (true, None) => HashAccess::Finished,
+            (true, Some(v)) => HashAccess::DefaultValue(ValueDefaultAccess(v)),
+        }
+    }
+}
+
+impl<'de> HashKeyAccess<'de> for ValueHashAccess<'de> {
+    type ValueAccess = Self;
+
+    fn next_key_seed<K>(self, seed: K) -> Result<(K::Value, Self::ValueAccess)>
     where
         K: DeserializeSeed<'de>,
     {
-        let Some((key, _)) = self.hash.get_index(self.index) else {
-            return Ok(None);
-        };
-
-        match self.state {
-            MapState::Key => {
-                return Err(Error {
-                    kind: Kind::KeyAfterKey,
-                })
-            }
-            MapState::Value => self.state = MapState::Key,
-        }
-
-        seed.deserialize(key).map(Some)
-    }
-
-    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
-    where
-        V: DeserializeSeed<'de>,
-    {
-        let (_, value) = self.hash.get_index(self.index).ok_or(Error {
-            kind: Kind::ValueAfterValue,
-        })?;
-        self.state = MapState::Value;
-        self.index += 1;
-
-        seed.deserialize(value)
+        let (k, _) = self
+            .hash
+            .map
+            .get_index(self.index)
+            // should never happen as getting an instance of HashKeyAccess requires a key
+            .expect("key was expected");
+        seed.deserialize(k).map(|v| (v, self))
     }
 
     fn len(&self) -> usize {
-        self.hash.len()
+        self.hash.map.len()
     }
 
     fn index(&self) -> usize {
         self.index
+    }
+}
+
+impl<'de> HashValueAccess<'de> for ValueHashAccess<'de> {
+    type KeyAccess = Self;
+    type DefaultAccess = ValueDefaultAccess<'de>;
+
+    fn next_value_seed<V>(self, seed: V) -> Result<(V::Value, HashAccess<'de, Self::KeyAccess>)>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        let (_, v) = self.hash.map.get_index(self.index).expect("key expected");
+        seed.deserialize(v).map(|v| (v, self.into_next_access()))
+    }
+
+    fn len(&self) -> usize {
+        self.hash.map.len()
+    }
+
+    fn index(&self) -> usize {
+        self.index
+    }
+}
+
+impl<'de> HashDefaultAccess<'de> for ValueDefaultAccess<'de> {
+    fn deserialize_default_seed<V>(self, seed: V) -> Result<V::Value>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        seed.deserialize(self.0)
     }
 }

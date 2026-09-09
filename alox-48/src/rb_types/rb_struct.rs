@@ -49,7 +49,7 @@ impl std::hash::Hash for RbStruct {
     }
 }
 
-struct StructVisitor;
+pub(crate) struct StructVisitor;
 
 impl<'de> Visitor<'de> for StructVisitor {
     type Value = RbStruct;

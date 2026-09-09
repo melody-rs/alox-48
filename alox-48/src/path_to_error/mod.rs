@@ -54,6 +54,8 @@ pub enum Context {
     ///
     /// The usize is the index of the value.
     HashValue(usize),
+    /// Error occurred while processing a hash's default value.
+    HashDefault,
 
     /// Error occurred while processing an array.
     ///
@@ -192,8 +194,8 @@ impl std::fmt::Display for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Context::{
             Array, ArrayIndex, Bignum, Bool, Class, Data, Extended, FetchingField, Field, Fixnum,
-            Float, Hash, HashKey, HashValue, Instance, Module, Nil, Object, Regex, String, Struct,
-            Symbol, UserClass, UserData, UserMarshal, WritingField, WritingFields,
+            Float, Hash, HashDefault, HashKey, HashValue, Instance, Module, Nil, Object, Regex,
+            String, Struct, Symbol, UserClass, UserData, UserMarshal, WritingField, WritingFields,
         };
         match self {
             Nil => write!(f, "while processing a nil"),
@@ -204,6 +206,7 @@ impl std::fmt::Display for Context {
             Hash(len) => write!(f, "while processing a hash with {len} entries"),
             HashKey(index) => write!(f, "while processing the {index} key of a hash"),
             HashValue(index) => write!(f, "while processing the {index} value of a hash"),
+            HashDefault => write!(f, "while processing the default value of a hash"),
             Array(len) => write!(f, "while processing an array with {len} elements"),
             ArrayIndex(index) => write!(f, "while processing the {index} element of an array"),
             String(s) => write!(f, "while processing a string: {s}"),

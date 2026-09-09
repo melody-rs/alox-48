@@ -18,7 +18,7 @@ use std::{
 
 use super::{
     traits::VisitorOption, ArrayAccess, Deserialize, DeserializeSeed, DeserializerTrait, Error,
-    HashAccess, Result, Unexpected, Visitor,
+    HashAccess, HashKeyAccess, Result, Unexpected, Visitor,
 };
 use crate::{BignumRef, Fixnum, NumCast, Sym};
 
@@ -483,7 +483,7 @@ macro_rules! map_impl {
     (
         $(#[$attr:meta])*
         $ty:ident <K $(: $kbound1:ident $(+ $kbound2:ident)*)*, V $(, $typaram:ident : $bound1:ident $(+ $bound2:ident)*)*>,
-        $access:ident,
+        $current:ident,
         $with_capacity:expr
     ) => {
         $(#[$attr])*
@@ -514,14 +514,16 @@ macro_rules! map_impl {
                     }
 
                     #[inline]
-                    fn visit_hash<A>(self, mut $access: A) -> Result<Self::Value>
+                    fn visit_hash<A>(self, mut $current: HashAccess<'de, A>) -> Result<Self::Value>
                     where
-                        A: HashAccess<'de>,
+                        A: HashKeyAccess<'de>,
                     {
                         let mut values = $with_capacity;
 
-                        while let Some((key, value)) = $access.next_entry()? {
-                            values.insert(key, value);
+                        while let HashAccess::Key(access) = $current {
+                            let (k, v, next) = access.next_entry()?;
+                            values.insert(k, v);
+                            $current = next;
                         }
 
                         Ok(values)

@@ -3,6 +3,8 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#![allow(missing_docs)]
+
 use super::{error::Unexpected, Error, Result};
 use crate::{BignumRef, Fixnum, Sym};
 use std::marker::PhantomData;
@@ -82,9 +84,9 @@ pub trait Visitor<'de>: Sized {
 
     /// Input contains a hash.
     // Collections
-    fn visit_hash<A>(self, _map: A) -> Result<Self::Value>
+    fn visit_hash<A>(self, _current: HashAccess<'de, A>) -> Result<Self::Value>
     where
-        A: HashAccess<'de>,
+        A: HashKeyAccess<'de>,
     {
         Err(Error::invalid_value(Unexpected::Hash, &self))
     }
@@ -332,60 +334,86 @@ pub trait IvarAccess<'de> {
 }
 
 /// Provides access to hash elements.
-pub trait HashAccess<'de> {
-    /// Get the next key.
-    ///
-    /// Returns `None` if there are no more keys.
-    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
+pub enum HashAccess<'de, K: HashKeyAccess<'de>> {
+    Key(K),
+    DefaultValue(<K::ValueAccess as HashValueAccess<'de>>::DefaultAccess),
+    Finished,
+}
+
+impl<'de, K> std::fmt::Debug for HashAccess<'de, K>
+where
+    K: std::fmt::Debug + HashKeyAccess<'de>,
+    <<K as HashKeyAccess<'de>>::ValueAccess as HashValueAccess<'de>>::DefaultAccess:
+        std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Key(k) => f.debug_tuple("HashAccess::Key").field(k).finish(),
+            Self::DefaultValue(d) => f.debug_tuple("HashAccess::DefaultValue").field(d).finish(),
+            Self::Finished => f.write_str("HashAccess::Finished"),
+        }
+    }
+}
+
+impl<'de, K> HashAccess<'de, K>
+where
+    K: HashKeyAccess<'de>,
+{
+    pub fn into_next_key(self) -> Option<K> {
+        match self {
+            Self::Key(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn is_finished(&self) -> bool {
+        matches!(self, HashAccess::Finished)
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Key(v) => v.len(),
+            _ => 0,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.is_finished()
+    }
+}
+
+// it can't be empty because in order to obtain this
+// there must be at least one more key
+#[allow(clippy::len_without_is_empty)]
+pub trait HashKeyAccess<'de>: Sized {
+    type ValueAccess: HashValueAccess<'de, KeyAccess = Self>;
+
+    fn next_key_seed<K>(self, seed: K) -> Result<(K::Value, Self::ValueAccess)>
     where
         K: DeserializeSeed<'de>;
 
-    /// Get the next value.
-    ///
-    /// This should be called after `next_key`.
-    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
-    where
-        V: DeserializeSeed<'de>;
-
-    /// Get the next key.
-    ///
-    /// Returns `None` if there are no more keys.
-    fn next_key<K>(&mut self) -> Result<Option<K>>
+    fn next_key<K>(self) -> Result<(K, Self::ValueAccess)>
     where
         K: Deserialize<'de>,
     {
         self.next_key_seed(PhantomData::<K>)
     }
 
-    /// Get the next value.
-    ///
-    /// This should be called after `next_key`.
-    fn next_value<V>(&mut self) -> Result<V>
-    where
-        V: Deserialize<'de>,
-    {
-        self.next_value_seed(PhantomData::<V>)
-    }
-
-    /// Get the next key and value.
     fn next_entry_seed<K, V>(
-        &mut self,
+        self,
         key_seed: K,
         value_seed: V,
-    ) -> Result<Option<(K::Value, V::Value)>>
+    ) -> Result<(K::Value, V::Value, HashAccess<'de, Self>)>
     where
         K: DeserializeSeed<'de>,
         V: DeserializeSeed<'de>,
     {
-        if let Some(k) = self.next_key_seed(key_seed)? {
-            self.next_value_seed(value_seed).map(|v| Some((k, v)))
-        } else {
-            Ok(None)
-        }
+        let (k, a) = self.next_key_seed(key_seed)?;
+        let (v, this) = a.next_value_seed(value_seed)?;
+        Ok((k, v, this))
     }
 
-    /// Get the next key and value.
-    fn next_entry<K, V>(&mut self) -> Result<Option<(K, V)>>
+    fn next_entry<K, V>(self) -> Result<(K, V, HashAccess<'de, Self>)>
     where
         K: Deserialize<'de>,
         V: Deserialize<'de>,
@@ -393,15 +421,43 @@ pub trait HashAccess<'de> {
         self.next_entry_seed(PhantomData::<K>, PhantomData::<V>)
     }
 
-    /// Get the number of elements.
     fn len(&self) -> usize;
 
-    /// Get the index of the current element.
     fn index(&self) -> usize;
+}
 
-    /// Returns `true` if there are no elements.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
+// ditto for above
+#[allow(clippy::len_without_is_empty)]
+pub trait HashValueAccess<'de>: Sized {
+    type KeyAccess: HashKeyAccess<'de, ValueAccess = Self>;
+    type DefaultAccess: HashDefaultAccess<'de>;
+
+    fn next_value_seed<V>(self, seed: V) -> Result<(V::Value, HashAccess<'de, Self::KeyAccess>)>
+    where
+        V: DeserializeSeed<'de>;
+
+    fn next_value<V>(self) -> Result<(V, HashAccess<'de, Self::KeyAccess>)>
+    where
+        V: Deserialize<'de>,
+    {
+        self.next_value_seed(PhantomData::<V>)
+    }
+
+    fn len(&self) -> usize;
+
+    fn index(&self) -> usize;
+}
+
+pub trait HashDefaultAccess<'de>: Sized {
+    fn deserialize_default_seed<V>(self, seed: V) -> Result<V::Value>
+    where
+        V: DeserializeSeed<'de>;
+
+    fn deserialize_default<V>(self) -> Result<V>
+    where
+        V: Deserialize<'de>,
+    {
+        self.deserialize_default_seed(PhantomData::<V>)
     }
 }
 
@@ -450,67 +506,6 @@ where
     fn next_entry<T>(&mut self) -> Result<Option<(&'de Sym, T)>>
     where
         T: Deserialize<'de>,
-    {
-        (**self).next_entry()
-    }
-
-    fn len(&self) -> usize {
-        (**self).len()
-    }
-
-    fn index(&self) -> usize {
-        (**self).index()
-    }
-}
-
-impl<'de, A> HashAccess<'de> for &mut A
-where
-    A: HashAccess<'de>,
-{
-    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
-    where
-        K: DeserializeSeed<'de>,
-    {
-        (**self).next_key_seed(seed)
-    }
-
-    fn next_key<K>(&mut self) -> Result<Option<K>>
-    where
-        K: Deserialize<'de>,
-    {
-        (**self).next_key()
-    }
-
-    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
-    where
-        V: DeserializeSeed<'de>,
-    {
-        (**self).next_value_seed(seed)
-    }
-
-    fn next_value<V>(&mut self) -> Result<V>
-    where
-        V: Deserialize<'de>,
-    {
-        (**self).next_value()
-    }
-
-    fn next_entry_seed<K, V>(
-        &mut self,
-        key_seed: K,
-        value_seed: V,
-    ) -> Result<Option<(K::Value, V::Value)>>
-    where
-        K: DeserializeSeed<'de>,
-        V: DeserializeSeed<'de>,
-    {
-        (**self).next_entry_seed(key_seed, value_seed)
-    }
-
-    fn next_entry<K, V>(&mut self) -> Result<Option<(K, V)>>
-    where
-        K: Deserialize<'de>,
-        V: Deserialize<'de>,
     {
         (**self).next_entry()
     }

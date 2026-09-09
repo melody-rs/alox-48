@@ -39,7 +39,7 @@ impl std::hash::Hash for Object {
     }
 }
 
-struct ObjectVisitor;
+pub(crate) struct ObjectVisitor;
 
 impl<'de> Visitor<'de> for ObjectVisitor {
     type Value = Object;

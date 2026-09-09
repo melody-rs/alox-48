@@ -18,5 +18,6 @@ pub use error::{Error, Kind, Unexpected};
 pub use deserializer::Deserializer;
 pub use traits::{
     ArrayAccess, Deserialize, DeserializeSeed, Deserializer as DeserializerTrait, HashAccess,
-    InstanceAccess, IvarAccess, Visitor, VisitorInstance, VisitorOption,
+    HashDefaultAccess, HashKeyAccess, HashValueAccess, InstanceAccess, IvarAccess, Visitor,
+    VisitorInstance, VisitorOption,
 };

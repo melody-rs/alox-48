@@ -6,7 +6,7 @@
 
 use super::{add_context, Context, Trace};
 use crate::{
-    de::{DeserializeSeed, DeserializerTrait},
+    de::{DeserializeSeed, DeserializerTrait, HashDefaultAccess, HashKeyAccess, HashValueAccess},
     ArrayAccess, BignumRef, DeResult, Fixnum, HashAccess, InstanceAccess, IvarAccess, Sym, Symbol,
     Visitor, VisitorInstance, VisitorOption,
 };
@@ -108,13 +108,20 @@ where
         add_context!(self.inner.visit_f64(v), self.trace.push(Context::Float(v)))
     }
 
-    fn visit_hash<A>(self, map: A) -> DeResult<Self::Value>
+    fn visit_hash<A>(self, current: HashAccess<'de, A>) -> DeResult<Self::Value>
     where
-        A: HashAccess<'de>,
+        A: crate::de::HashKeyAccess<'de>,
     {
-        let wrapped = Wrapped {
-            inner: map,
-            trace: self.trace,
+        let wrapped = match current {
+            HashAccess::Key(a) => HashAccess::Key(Wrapped {
+                inner: a,
+                trace: self.trace,
+            }),
+            HashAccess::DefaultValue(a) => HashAccess::DefaultValue(Wrapped {
+                inner: a,
+                trace: self.trace,
+            }),
+            HashAccess::Finished => HashAccess::Finished,
         };
         let len = wrapped.len();
         add_context!(
@@ -387,34 +394,33 @@ where
     }
 }
 
-impl<'de, X> HashAccess<'de> for Wrapped<'_, X>
+impl<'a, 'de, X> HashKeyAccess<'de> for Wrapped<'a, X>
 where
-    X: HashAccess<'de>,
+    X: HashKeyAccess<'de>,
 {
-    fn next_key_seed<K>(&mut self, seed: K) -> DeResult<Option<K::Value>>
+    type ValueAccess = Wrapped<'a, X::ValueAccess>;
+
+    fn next_key_seed<K>(self, seed: K) -> DeResult<(K::Value, Self::ValueAccess)>
     where
         K: DeserializeSeed<'de>,
     {
+        let index = self.inner.index();
         add_context!(
             self.inner.next_key_seed(Wrapped {
                 inner: seed,
-                trace: self.trace,
+                trace: self.trace
             }),
-            self.trace.push(Context::HashKey(self.index()))
+            self.trace.push(Context::HashKey(index))
         )
-    }
-
-    fn next_value_seed<V>(&mut self, seed: V) -> DeResult<V::Value>
-    where
-        V: DeserializeSeed<'de>,
-    {
-        add_context!(
-            self.inner.next_value_seed(Wrapped {
-                inner: seed,
-                trace: self.trace,
-            }),
-            self.trace.push(Context::HashValue(self.index()))
-        )
+        .map(|(k, a)| {
+            (
+                k,
+                Wrapped {
+                    inner: a,
+                    trace: self.trace,
+                },
+            )
+        })
     }
 
     fn len(&self) -> usize {
@@ -423,6 +429,65 @@ where
 
     fn index(&self) -> usize {
         self.inner.index()
+    }
+}
+
+impl<'a, 'de, X> HashValueAccess<'de> for Wrapped<'a, X>
+where
+    X: HashValueAccess<'de>,
+{
+    type KeyAccess = Wrapped<'a, X::KeyAccess>;
+    type DefaultAccess = Wrapped<'a, X::DefaultAccess>;
+
+    fn next_value_seed<V>(self, seed: V) -> DeResult<(V::Value, HashAccess<'de, Self::KeyAccess>)>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        let index = self.inner.index();
+        add_context!(
+            self.inner.next_value_seed(Wrapped {
+                inner: seed,
+                trace: self.trace
+            }),
+            self.trace.push(Context::HashValue(index))
+        )
+        .map(|(k, a)| {
+            let wrapped = match a {
+                HashAccess::Key(a) => HashAccess::Key(Wrapped {
+                    inner: a,
+                    trace: self.trace,
+                }),
+                HashAccess::DefaultValue(a) => HashAccess::DefaultValue(Wrapped {
+                    inner: a,
+                    trace: self.trace,
+                }),
+                HashAccess::Finished => HashAccess::Finished,
+            };
+            (k, wrapped)
+        })
+    }
+
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn index(&self) -> usize {
+        self.inner.index()
+    }
+}
+
+impl<'de, X> HashDefaultAccess<'de> for Wrapped<'_, X>
+where
+    X: HashDefaultAccess<'de>,
+{
+    fn deserialize_default_seed<V>(self, seed: V) -> DeResult<V::Value>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        add_context!(
+            self.inner.deserialize_default_seed(seed),
+            self.trace.push(Context::HashDefault)
+        )
     }
 }
 

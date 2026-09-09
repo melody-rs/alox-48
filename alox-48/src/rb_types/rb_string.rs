@@ -113,7 +113,7 @@ impl From<Vec<u8>> for RbString {
     }
 }
 
-struct StringVisitor;
+pub(crate) struct StringVisitor;
 
 impl<'de> Visitor<'de> for StringVisitor {
     type Value = RbString;

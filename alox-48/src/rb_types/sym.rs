@@ -159,7 +159,7 @@ impl PartialEq<Sym> for Sym {
 
 impl Eq for Sym {}
 
-struct SymVisitor;
+pub(crate) struct SymVisitor;
 
 impl<'de> Visitor<'de> for SymVisitor {
     type Value = &'de Sym;

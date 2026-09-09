@@ -61,7 +61,7 @@ impl Userdata {
     }
 }
 
-struct UserdataVisitor;
+pub(crate) struct UserdataVisitor;
 
 impl<'de> Visitor<'de> for UserdataVisitor {
     type Value = Userdata;
