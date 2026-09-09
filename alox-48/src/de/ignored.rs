@@ -4,7 +4,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::{traits::InstanceAccess, Deserialize, Result, Visitor};
-use crate::{de::HashDefaultAccess, BignumRef, DeserializerTrait, Fixnum, IvarAccess, Sym};
+use crate::{
+    de::traits::{HashDefaultAccess, HashKeyAccess},
+    BignumRef, Continue, DeserializerTrait, Fixnum, IvarAccess, Sym,
+};
 
 /// A type that implements deserialize which ignores all values.
 #[derive(Clone, Copy, Debug, Default)]
@@ -35,19 +38,34 @@ impl<'de> Visitor<'de> for IgnoredVisitor {
         Ok(Ignored)
     }
 
-    fn visit_hash<A>(self, mut current: super::HashAccess<'de, A>) -> Result<Self::Value>
+    fn visit_hash<A>(self, mut current: Continue<A, ()>) -> Result<Self::Value>
     where
-        A: super::HashKeyAccess<'de>,
+        A: HashKeyAccess<'de, Finished = ()>,
     {
-        while let super::HashAccess::Key(access) = current {
+        while let Continue::Next(access) = current {
             let (_, _, next) = access.next_entry::<Ignored, Ignored>()?;
             current = next;
         }
-        if let super::HashAccess::DefaultValue(access) = current {
-            access.deserialize_default::<Ignored>()?;
-        }
 
         Ok(Ignored)
+    }
+
+    fn visit_hash_default<A, D>(self, mut current: Continue<A, D>) -> Result<Self::Value>
+    where
+        A: HashKeyAccess<'de, Finished = D>,
+        D: HashDefaultAccess<'de>,
+    {
+        loop {
+            match current {
+                Continue::Next(access) => {
+                    let (_, _, next) = access.next_entry::<Ignored, Ignored>()?;
+                    current = next;
+                }
+                Continue::Finished(default) => {
+                    break default.deserialize_default::<Ignored>();
+                }
+            }
+        }
     }
 
     fn visit_array<A>(self, mut array: A) -> Result<Self::Value>

@@ -76,6 +76,8 @@
 //! Fortunately, this realistically only matters for byte arrays- any types larger than a `i64` are going to quickly take up more
 //! space than available RAM.
 
+#![allow(missing_docs)]
+
 // Copyright (c) 2024 Lily Lyons
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -97,6 +99,18 @@ pub mod ser;
 mod value;
 pub use value::{from_value, to_value, Serializer as ValueSerializer, Value};
 
+#[derive(Debug)]
+pub enum Continue<Next, Finished> {
+    Next(Next),
+    Finished(Finished),
+}
+
+impl<N, F> Continue<N, F> {
+    pub fn is_finished(&self) -> bool {
+        matches!(self, Continue::Finished(_))
+    }
+}
+
 mod rb_types;
 #[doc(inline)]
 pub use rb_types::{
@@ -106,8 +120,9 @@ pub use rb_types::{
 
 #[doc(inline)]
 pub use de::{
-    ArrayAccess, Deserialize, Deserializer, DeserializerTrait, Error as DeError, HashAccess,
-    InstanceAccess, IvarAccess, Result as DeResult, Visitor, VisitorInstance, VisitorOption,
+    ArrayAccess, Deserialize, Deserializer, DeserializerTrait, Error as DeError, HashDefaultAccess,
+    HashKeyAccess, HashValueAccess, InstanceAccess, IvarAccess, Result as DeResult, Visitor,
+    VisitorInstance, VisitorOption,
 };
 #[doc(inline)]
 pub use ser::{

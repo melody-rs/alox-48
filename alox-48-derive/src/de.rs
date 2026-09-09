@@ -34,7 +34,7 @@ pub fn derive_inner(input: &syn::DeriveInput) -> TokenStream {
         const _: () = {
             #alox_crate_path;
             use _alox_48::{
-                ArrayAccess, Deserialize, DeserializerTrait, DeError, HashAccess,
+                ArrayAccess, Deserialize, DeserializerTrait, DeError,
                 InstanceAccess, IvarAccess, Visitor, VisitorOption, DeResult, Sym,
                 de::Unexpected,
             };

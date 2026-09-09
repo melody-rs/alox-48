@@ -5,15 +5,15 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use crate::{
     de::{
-        ArrayAccess, Deserialize, DeserializeSeed, DeserializerTrait, Error, HashAccess,
-        HashDefaultAccess, HashKeyAccess, HashValueAccess, InstanceAccess, IvarAccess, Kind,
-        Result, Visitor, VisitorInstance, VisitorOption,
+        ArrayAccess, Deserialize, DeserializeSeed, DeserializerTrait, Error, HashDefaultAccess,
+        HashKeyAccess, HashValueAccess, InstanceAccess, IvarAccess, Kind, Result, Visitor,
+        VisitorInstance, VisitorOption,
     },
     rb_types::{
-        BignumRef, Fixnum, HashVisitor, InstanceVisitor, ObjectVisitor, RbFields, RbHash, RbString,
+        BignumRef, Fixnum, HashVisitor, InstanceVisitor, ObjectVisitor, RbFields, RbString,
         StringVisitor, StructVisitor, Sym, UserdataVisitor,
     },
-    Value,
+    Continue, RbHash, Value,
 };
 
 struct ValueVisitor;
@@ -45,11 +45,19 @@ impl<'de> Visitor<'de> for ValueVisitor {
         Ok(Value::Float(v))
     }
 
-    fn visit_hash<A>(self, current: HashAccess<'de, A>) -> Result<Self::Value>
+    fn visit_hash<A>(self, current: crate::Continue<A, ()>) -> Result<Self::Value>
     where
-        A: HashKeyAccess<'de>,
+        A: HashKeyAccess<'de, Finished = ()>,
     {
         HashVisitor.visit_hash(current).map(Value::Hash)
+    }
+
+    fn visit_hash_default<A, D>(self, current: crate::Continue<A, D>) -> Result<Self::Value>
+    where
+        A: HashKeyAccess<'de, Finished = D>,
+        D: HashDefaultAccess<'de>,
+    {
+        HashVisitor.visit_hash_default(current).map(Value::Hash)
     }
 
     fn visit_array<A>(self, mut access: A) -> Result<Self::Value>
@@ -208,7 +216,13 @@ impl<'de> DeserializerTrait<'de> for &'de Value {
             Value::String(s) => visitor.visit_string(&s.data),
             Value::Symbol(s) => visitor.visit_symbol(s),
             Value::Array(array) => visitor.visit_array(ValueArrayAccess { array, index: 0 }),
-            Value::Hash(hash) => visitor.visit_hash(ValueHashAccess::new(hash).into_next_access()),
+            Value::Hash(RbHash { map, default: None }) => {
+                visitor.visit_hash(HashAccessImpl::next_access(map.iter()))
+            }
+            Value::Hash(RbHash {
+                map,
+                default: Some(v),
+            }) => visitor.visit_hash_default(DefaultHashAccessImpl::next_access(map.iter(), v)),
             Value::Userdata(u) => visitor.visit_user_data(&u.class, &u.data),
             Value::Object(o) => visitor.visit_object(
                 &o.class,
@@ -346,75 +360,133 @@ impl<'de> ArrayAccess<'de> for ValueArrayAccess<'de> {
     }
 }
 
-struct ValueHashAccess<'de> {
-    hash: &'de RbHash,
-    index: usize,
+type Iter<'de> = indexmap::map::Iter<'de, Value, Value>;
+
+macro_rules! impl_hash_access {
+    (impl<'de> $type:ident<'de> {
+        type ValueAccess = $value:ident<'de>;
+
+        fn next_access(mut iter: Iter<'de>$(, $finish:ident: $finish_ty:ty)?) -> Continue<Self, $access:ty> {
+            Continue::Finished => $on_finish:expr
+        }
+    }) => {
+        impl<'de> $type<'de> {
+            fn next_access(mut iter: Iter<'de>$(, $finish: $finish_ty)?) -> Continue<Self, $access> {
+                match iter.next() {
+                    Some((next_key, next_value)) => Continue::Next(Self {
+                        iter,
+                        next_key,
+                        next_value,
+                        $($finish,)?
+                    }),
+                    None => Continue::Finished($on_finish),
+                }
+            }
+        }
+
+        impl<'de> HashKeyAccess<'de> for $type<'de> {
+            type ValueAccess = $value<'de>;
+            type Finished = $access;
+
+            fn next_key_seed<K>(self, seed: K) -> Result<(K::Value, Self::ValueAccess)>
+            where
+                K: DeserializeSeed<'de>,
+            {
+                let Self {
+                    iter,
+                    next_key,
+                    next_value,
+                    $($finish,)?
+                } = self;
+                seed.deserialize(next_key).map(|v| {
+                    (
+                        v,
+                        Self::ValueAccess {
+                            iter,
+                            next_value,
+                            $($finish,)?
+                        },
+                    )
+                })
+            }
+
+            fn len(&self) -> usize {
+                self.iter.len()
+            }
+        }
+
+        impl<'de, 'a> HashValueAccess<'de> for $value<'de> {
+            type KeyAccess = $type<'de>;
+            type Finished = $access;
+
+            fn next_value_seed<V>(
+                self,
+                seed: V,
+            ) -> Result<(V::Value, Continue<Self::KeyAccess, Self::Finished>)>
+            where
+                V: DeserializeSeed<'de>,
+            {
+                let Self {
+                    iter,
+                    next_value,
+                    $($finish,)?
+                } = self;
+                seed.deserialize(next_value)
+                    .map(|v| (v, Self::KeyAccess::next_access(iter $(, $finish)?)))
+            }
+
+            fn len(&self) -> usize {
+                self.iter.len()
+            }
+        }
+    };
 }
 
-struct ValueDefaultAccess<'de>(&'de Value);
+struct HashAccessImpl<'de> {
+    iter: Iter<'de>,
+    next_key: &'de Value,
+    next_value: &'de Value,
+}
 
-impl<'de> ValueHashAccess<'de> {
-    fn new(hash: &'de RbHash) -> Self {
-        Self { hash, index: 0 }
-    }
+struct HashValueAccessImpl<'de> {
+    iter: Iter<'de>,
+    next_value: &'de Value,
+}
 
-    fn into_next_access(self) -> HashAccess<'de, Self> {
-        match (
-            self.index >= self.hash.map.len(),
-            self.hash.default.as_deref(),
-        ) {
-            (false, _) => HashAccess::Key(self),
-            (true, None) => HashAccess::Finished,
-            (true, Some(v)) => HashAccess::DefaultValue(ValueDefaultAccess(v)),
+impl_hash_access! {
+    impl<'de> HashAccessImpl<'de> {
+        type ValueAccess = HashValueAccessImpl<'de>;
+
+        fn next_access(mut iter: Iter<'de>) -> Continue<Self, ()> {
+            Continue::Finished => ()
         }
     }
 }
 
-impl<'de> HashKeyAccess<'de> for ValueHashAccess<'de> {
-    type ValueAccess = Self;
-    type DefaultAccess = ValueDefaultAccess<'de>;
+struct DefaultHashAccessImpl<'de> {
+    iter: Iter<'de>,
+    next_key: &'de Value,
+    next_value: &'de Value,
+    default: &'de Value,
+}
 
-    fn next_key_seed<K>(self, seed: K) -> Result<(K::Value, Self::ValueAccess)>
-    where
-        K: DeserializeSeed<'de>,
-    {
-        let (k, _) = self
-            .hash
-            .map
-            .get_index(self.index)
-            // should never happen as getting an instance of HashKeyAccess requires a key
-            .expect("key was expected");
-        seed.deserialize(k).map(|v| (v, self))
-    }
+struct DefaultHashValueAccessImpl<'de> {
+    iter: Iter<'de>,
+    next_value: &'de Value,
+    default: &'de Value,
+}
 
-    fn len(&self) -> usize {
-        self.hash.map.len()
-    }
+impl_hash_access! {
+    impl<'de> DefaultHashAccessImpl<'de> {
+        type ValueAccess = DefaultHashValueAccessImpl<'de>;
 
-    fn index(&self) -> usize {
-        self.index
+        fn next_access(mut iter: Iter<'de>, default: &'de Value) -> Continue<Self, ValueDefaultAccess<'de>> {
+            Continue::Finished => ValueDefaultAccess(default)
+        }
     }
 }
 
-impl<'de> HashValueAccess<'de> for ValueHashAccess<'de> {
-    type KeyAccess = Self;
-
-    fn next_value_seed<V>(self, seed: V) -> Result<(V::Value, HashAccess<'de, Self::KeyAccess>)>
-    where
-        V: DeserializeSeed<'de>,
-    {
-        let (_, v) = self.hash.map.get_index(self.index).expect("key expected");
-        seed.deserialize(v).map(|v| (v, self.into_next_access()))
-    }
-
-    fn len(&self) -> usize {
-        self.hash.map.len()
-    }
-
-    fn index(&self) -> usize {
-        self.index
-    }
-}
+struct ValueDefaultAccess<'de>(&'de Value);
 
 impl<'de> HashDefaultAccess<'de> for ValueDefaultAccess<'de> {
     fn deserialize_default_seed<V>(self, seed: V) -> Result<V::Value>

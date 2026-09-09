@@ -7,7 +7,7 @@
 use super::{add_context, Context, Trace};
 use crate::{
     de::{DeserializeSeed, DeserializerTrait, HashDefaultAccess, HashKeyAccess, HashValueAccess},
-    ArrayAccess, BignumRef, DeResult, Fixnum, HashAccess, InstanceAccess, IvarAccess, Sym, Symbol,
+    ArrayAccess, BignumRef, Continue, DeResult, Fixnum, InstanceAccess, IvarAccess, Sym, Symbol,
     Visitor, VisitorInstance, VisitorOption,
 };
 
@@ -108,24 +108,27 @@ where
         add_context!(self.inner.visit_f64(v), self.trace.push(Context::Float(v)))
     }
 
-    fn visit_hash<A>(self, current: HashAccess<'de, A>) -> DeResult<Self::Value>
+    fn visit_hash<A>(self, current: Continue<A, ()>) -> DeResult<Self::Value>
     where
-        A: crate::de::HashKeyAccess<'de>,
+        A: HashKeyAccess<'de, Finished = ()>,
     {
-        let wrapped = match current {
-            HashAccess::Key(a) => HashAccess::Key(Wrapped {
-                inner: a,
-                trace: self.trace,
-            }),
-            HashAccess::DefaultValue(a) => HashAccess::DefaultValue(Wrapped {
-                inner: a,
-                trace: self.trace,
-            }),
-            HashAccess::Finished => HashAccess::Finished,
-        };
+        let wrapped = WrappedHashAccess::next_access(self.trace, 0, current);
         let len = wrapped.len();
         add_context!(
             self.inner.visit_hash(wrapped),
+            self.trace.push(Context::Hash(len))
+        )
+    }
+
+    fn visit_hash_default<A, D>(self, current: Continue<A, D>) -> DeResult<Self::Value>
+    where
+        A: HashKeyAccess<'de, Finished = D>,
+        D: HashDefaultAccess<'de>,
+    {
+        let wrapped = WrappedDefaultHashAccess::next_access(self.trace, 0, current);
+        let len = wrapped.len();
+        add_context!(
+            self.inner.visit_hash_default(wrapped),
             self.trace.push(Context::Hash(len))
         )
     }
@@ -394,85 +397,134 @@ where
     }
 }
 
-impl<'a, 'de, X> HashKeyAccess<'de> for Wrapped<'a, X>
-where
-    X: HashKeyAccess<'de>,
-{
-    type ValueAccess = Wrapped<'a, X::ValueAccess>;
-    type DefaultAccess = Wrapped<'a, X::DefaultAccess>;
+macro_rules! impl_hash_access {
+    (impl<'a, 'de, X> $type:ident<'a, 'de, X> {
+        type Finished = $finished:ty;
 
-    fn next_key_seed<K>(self, seed: K) -> DeResult<(K::Value, Self::ValueAccess)>
-    where
-        K: DeserializeSeed<'de>,
-    {
-        let index = self.inner.index();
-        add_context!(
-            self.inner.next_key_seed(Wrapped {
-                inner: seed,
-                trace: self.trace
-            }),
-            self.trace.push(Context::HashKey(index))
-        )
-        .map(|(k, a)| {
-            (
-                k,
-                Wrapped {
-                    inner: a,
-                    trace: self.trace,
-                },
-            )
-        })
-    }
+        fn next_access($trace_param:ident: &'a mut Trace, $index_param:ident: usize, $param_name:ident: Continue<Self, X::Finished>) -> Continue<Self, Self::Finished> {
+            Continue::Finished($on_finish_param:pat_param) => $on_finish:expr
+        }
+    }) => {
+        impl<'a, 'de, X> $type<'a, X>
+        where
+            X: HashKeyAccess<'de>,
+        {
+            fn next_access(
+                $trace_param: &'a mut Trace,
+                $index_param: usize,
+                $param_name: Continue<X, X::Finished>,
+            ) -> Continue<Self, $finished> {
+                match $param_name {
+                    Continue::Next(next) => Continue::Next($type {
+                        inner: next,
+                        trace: $trace_param,
+                        index: $index_param,
+                    }),
+                    Continue::Finished($on_finish_param) => Continue::Finished($on_finish),
+                }
+            }
+        }
 
-    fn len(&self) -> usize {
-        self.inner.len()
-    }
+        impl<'a, 'de, X> HashKeyAccess<'de> for $type<'a, X>
+        where
+            X: HashKeyAccess<'de>,
+        {
+            type ValueAccess = $type<'a, X::ValueAccess>;
+            type Finished = $finished;
 
-    fn index(&self) -> usize {
-        self.inner.index()
+            fn next_key_seed<K>(self, seed: K) -> DeResult<(K::Value, Self::ValueAccess)>
+            where
+                K: DeserializeSeed<'de>,
+            {
+                add_context!(
+                    self.inner.next_key_seed(Wrapped {
+                        inner: seed,
+                        trace: self.trace
+                    }),
+                    self.trace.push(Context::HashKey(self.index))
+                )
+                .map(|(k, a)| {
+                    (
+                        k,
+                        $type {
+                            inner: a,
+                            trace: self.trace,
+                            index: self.index,
+                        },
+                    )
+                })
+            }
+
+            fn len(&self) -> usize {
+                self.inner.len()
+            }
+        }
+
+        impl<'a, 'de, X> HashValueAccess<'de> for $type<'a, X>
+        where
+            X: HashValueAccess<'de>,
+        {
+            type KeyAccess = $type<'a, X::KeyAccess>;
+            type Finished = $finished;
+
+            fn next_value_seed<V>(
+                self,
+                seed: V,
+            ) -> DeResult<(V::Value, Continue<Self::KeyAccess, Self::Finished>)>
+            where
+                V: DeserializeSeed<'de>,
+            {
+                add_context!(
+                    self.inner.next_value_seed(Wrapped {
+                        inner: seed,
+                        trace: self.trace
+                    }),
+                    self.trace.push(Context::HashValue(self.index))
+                )
+                .map(|(k, a)| {
+                    let wrapped = $type::next_access(self.trace, self.index + 1, a);
+                    (k, wrapped)
+                })
+            }
+
+            fn len(&self) -> usize {
+                self.inner.len()
+            }
+        }
+    };
+}
+
+#[derive(Debug)]
+struct WrappedHashAccess<'trace, X> {
+    inner: X,
+    trace: &'trace mut Trace,
+    index: usize,
+}
+
+impl_hash_access! {
+    impl<'a, 'de, X> WrappedHashAccess<'a, 'de, X> {
+        type Finished = ();
+
+        fn next_access(trace: &'a mut Trace, index: usize, access: Continue<Self, X::Finished>) -> Continue<Self, Self::Finished> {
+            Continue::Finished(_) => ()
+        }
     }
 }
 
-impl<'a, 'de, X> HashValueAccess<'de> for Wrapped<'a, X>
-where
-    X: HashValueAccess<'de>,
-{
-    type KeyAccess = Wrapped<'a, X::KeyAccess>;
+#[derive(Debug)]
+struct WrappedDefaultHashAccess<'trace, X> {
+    inner: X,
+    trace: &'trace mut Trace,
+    index: usize,
+}
 
-    fn next_value_seed<V>(self, seed: V) -> DeResult<(V::Value, HashAccess<'de, Self::KeyAccess>)>
-    where
-        V: DeserializeSeed<'de>,
-    {
-        let index = self.inner.index();
-        add_context!(
-            self.inner.next_value_seed(Wrapped {
-                inner: seed,
-                trace: self.trace
-            }),
-            self.trace.push(Context::HashValue(index))
-        )
-        .map(|(k, a)| {
-            let wrapped = match a {
-                HashAccess::Key(a) => HashAccess::Key(Wrapped {
-                    inner: a,
-                    trace: self.trace,
-                }),
-                HashAccess::DefaultValue(a) => HashAccess::DefaultValue(Wrapped {
-                    inner: a,
-                    trace: self.trace,
-                }),
-                HashAccess::Finished => HashAccess::Finished,
-            };
-            (k, wrapped)
-        })
-    }
+impl_hash_access! {
+    impl<'a, 'de, X> WrappedDefaultHashAccess<'a, 'de, X> {
+        type Finished = Wrapped<'a, X::Finished>;
 
-    fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    fn index(&self) -> usize {
-        self.inner.index()
+        fn next_access(trace: &'a mut Trace, index: usize, access: Continue<Self, X::Finished>) -> Continue<Self, Self::Finished> {
+            Continue::Finished(default) => Wrapped { inner: default, trace }
+        }
     }
 }
 

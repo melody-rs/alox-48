@@ -6,7 +6,7 @@
 #![allow(missing_docs)]
 
 use super::{error::Unexpected, Error, Result};
-use crate::{BignumRef, Fixnum, Sym};
+use crate::{BignumRef, Continue, Fixnum, Sym};
 use std::marker::PhantomData;
 
 /// A structure that can be deserialized from ruby marshal format.
@@ -82,14 +82,25 @@ pub trait Visitor<'de>: Sized {
         Err(Error::invalid_value(Unexpected::Float(v), &self))
     }
 
-    /// Input contains a hash.
     // Collections
-    fn visit_hash<A>(self, _current: HashAccess<'de, A>) -> Result<Self::Value>
+
+    /// Input contains a hash.
+    fn visit_hash_default<A, D>(self, _current: Continue<A, D>) -> Result<Self::Value>
     where
-        A: HashKeyAccess<'de>,
+        A: HashKeyAccess<'de, Finished = D>,
+        D: HashDefaultAccess<'de>,
     {
         Err(Error::invalid_value(Unexpected::Hash, &self))
     }
+
+    /// Input contains a hash.
+    fn visit_hash<A>(self, _current: Continue<A, ()>) -> Result<Self::Value>
+    where
+        A: HashKeyAccess<'de, Finished = ()>,
+    {
+        Err(Error::invalid_value(Unexpected::Hash, &self))
+    }
+
     /// Input contains an array.
     fn visit_array<A>(self, _array: A) -> Result<Self::Value>
     where
@@ -333,46 +344,14 @@ pub trait IvarAccess<'de> {
     }
 }
 
-/// Provides access to hash elements.
-pub enum HashAccess<'de, K: HashKeyAccess<'de>> {
-    Key(K),
-    DefaultValue(K::DefaultAccess),
-    Finished,
-}
-
-impl<'de, K> std::fmt::Debug for HashAccess<'de, K>
-where
-    K: std::fmt::Debug + HashKeyAccess<'de>,
-    K::DefaultAccess: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Key(k) => f.debug_tuple("HashAccess::Key").field(k).finish(),
-            Self::DefaultValue(d) => f.debug_tuple("HashAccess::DefaultValue").field(d).finish(),
-            Self::Finished => f.write_str("HashAccess::Finished"),
-        }
-    }
-}
-
-impl<'de, K> HashAccess<'de, K>
+impl<'de, K> Continue<K, K::Finished>
 where
     K: HashKeyAccess<'de>,
 {
-    pub fn into_next_key(self) -> Option<K> {
-        match self {
-            Self::Key(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn is_finished(&self) -> bool {
-        matches!(self, HashAccess::Finished)
-    }
-
     pub fn len(&self) -> usize {
         match self {
-            Self::Key(v) => v.len(),
-            _ => 0,
+            Self::Next(v) => v.len(),
+            Self::Finished(_) => 0,
         }
     }
 
@@ -384,9 +363,10 @@ where
 // it can't be empty because in order to obtain this
 // there must be at least one more key
 #[allow(clippy::len_without_is_empty)]
+#[allow(clippy::type_complexity)] // can't fix
 pub trait HashKeyAccess<'de>: Sized {
-    type ValueAccess: HashValueAccess<'de, KeyAccess = Self>;
-    type DefaultAccess: HashDefaultAccess<'de>;
+    type ValueAccess: HashValueAccess<'de, KeyAccess = Self, Finished = Self::Finished>;
+    type Finished;
 
     fn next_key_seed<K>(self, seed: K) -> Result<(K::Value, Self::ValueAccess)>
     where
@@ -403,7 +383,7 @@ pub trait HashKeyAccess<'de>: Sized {
         self,
         key_seed: K,
         value_seed: V,
-    ) -> Result<(K::Value, V::Value, HashAccess<'de, Self>)>
+    ) -> Result<(K::Value, V::Value, Continue<Self, Self::Finished>)>
     where
         K: DeserializeSeed<'de>,
         V: DeserializeSeed<'de>,
@@ -413,7 +393,7 @@ pub trait HashKeyAccess<'de>: Sized {
         Ok((k, v, next))
     }
 
-    fn next_entry<K, V>(self) -> Result<(K, V, HashAccess<'de, Self>)>
+    fn next_entry<K, V>(self) -> Result<(K, V, Continue<Self, Self::Finished>)>
     where
         K: Deserialize<'de>,
         V: Deserialize<'de>,
@@ -422,20 +402,23 @@ pub trait HashKeyAccess<'de>: Sized {
     }
 
     fn len(&self) -> usize;
-
-    fn index(&self) -> usize;
 }
 
 // ditto for above
 #[allow(clippy::len_without_is_empty)]
+#[allow(clippy::type_complexity)] // can't fix
 pub trait HashValueAccess<'de>: Sized {
-    type KeyAccess: HashKeyAccess<'de, ValueAccess = Self>;
+    type KeyAccess: HashKeyAccess<'de, ValueAccess = Self, Finished = Self::Finished>;
+    type Finished;
 
-    fn next_value_seed<V>(self, seed: V) -> Result<(V::Value, HashAccess<'de, Self::KeyAccess>)>
+    fn next_value_seed<V>(
+        self,
+        seed: V,
+    ) -> Result<(V::Value, Continue<Self::KeyAccess, Self::Finished>)>
     where
         V: DeserializeSeed<'de>;
 
-    fn next_value<V>(self) -> Result<(V, HashAccess<'de, Self::KeyAccess>)>
+    fn next_value<V>(self) -> Result<(V, Continue<Self::KeyAccess, Self::Finished>)>
     where
         V: Deserialize<'de>,
     {
@@ -443,8 +426,6 @@ pub trait HashValueAccess<'de>: Sized {
     }
 
     fn len(&self) -> usize;
-
-    fn index(&self) -> usize;
 }
 
 pub trait HashDefaultAccess<'de>: Sized {

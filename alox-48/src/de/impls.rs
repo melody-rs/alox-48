@@ -18,9 +18,9 @@ use std::{
 
 use super::{
     traits::VisitorOption, ArrayAccess, Deserialize, DeserializeSeed, DeserializerTrait, Error,
-    HashAccess, HashKeyAccess, Result, Unexpected, Visitor,
+    HashKeyAccess, Result, Unexpected, Visitor,
 };
-use crate::{BignumRef, Fixnum, NumCast, Sym};
+use crate::{BignumRef, Continue, Fixnum, NumCast, Sym};
 
 impl<'de, T> DeserializeSeed<'de> for PhantomData<T>
 where
@@ -514,13 +514,13 @@ macro_rules! map_impl {
                     }
 
                     #[inline]
-                    fn visit_hash<A>(self, mut $current: HashAccess<'de, A>) -> Result<Self::Value>
+                    fn visit_hash<A>(self, mut $current: Continue<A, ()>) -> Result<Self::Value>
                     where
-                        A: HashKeyAccess<'de>,
+                        A: HashKeyAccess<'de, Finished = ()>,
                     {
                         let mut values = $with_capacity;
 
-                        while let HashAccess::Key(access) = $current {
+                        while let Continue::Next(access) = $current {
                             let (k, v, next) = access.next_entry()?;
                             values.insert(k, v);
                             $current = next;

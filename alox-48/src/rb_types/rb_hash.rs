@@ -1,9 +1,8 @@
 #![allow(missing_docs)]
 
 use crate::{
-    de::HashDefaultAccess,
     ser::{hash, hash_default},
-    Deserialize, HashAccess, Serialize, Value, Visitor,
+    Continue, Deserialize, HashDefaultAccess, HashKeyAccess, Serialize, Value, Visitor,
 };
 use indexmap::IndexMap;
 
@@ -150,22 +149,41 @@ impl<'de> Visitor<'de> for HashVisitor {
         formatter.write_str("a ruby hash")
     }
 
-    fn visit_hash<A>(self, mut current: crate::HashAccess<'de, A>) -> crate::DeResult<Self::Value>
+    fn visit_hash<A>(self, mut current: Continue<A, ()>) -> crate::DeResult<Self::Value>
     where
-        A: crate::de::HashKeyAccess<'de>,
+        A: HashKeyAccess<'de, Finished = ()>,
     {
         let mut hash = RbHash::with_capacity(current.len());
 
-        while let HashAccess::Key(access) = current {
-            let (k, v, next) = access.next_entry()?;
+        while let Continue::Next(next) = current {
+            let (k, v, next) = next.next_entry()?;
             hash.insert(k, v);
             current = next;
         }
-        if let HashAccess::DefaultValue(default) = current {
-            hash.default = Some(default.deserialize_default()?);
-        }
 
         Ok(hash)
+    }
+
+    fn visit_hash_default<A, D>(self, mut current: Continue<A, D>) -> crate::DeResult<Self::Value>
+    where
+        A: HashKeyAccess<'de, Finished = D>,
+        D: HashDefaultAccess<'de>,
+    {
+        let mut hash = RbHash::with_capacity(current.len());
+
+        loop {
+            match current {
+                Continue::Next(next) => {
+                    let (k, v, next) = next.next_entry()?;
+                    hash.insert(k, v);
+                    current = next;
+                }
+                Continue::Finished(default) => {
+                    hash.default = Some(default.deserialize_default()?);
+                    break Ok(hash);
+                }
+            }
+        }
     }
 }
 
