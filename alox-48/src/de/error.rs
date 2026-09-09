@@ -19,8 +19,6 @@ pub struct Error {
     pub kind: Kind,
 }
 
-// TODO: provide error context
-
 /// Error type for this crate.
 #[derive(Debug, thiserror::Error)]
 pub enum Kind {

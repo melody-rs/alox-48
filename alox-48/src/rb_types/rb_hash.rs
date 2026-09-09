@@ -1,6 +1,10 @@
 #![allow(missing_docs)]
 
-use crate::{de::HashDefaultAccess, Deserialize, HashAccess, Serialize, Value, Visitor};
+use crate::{
+    de::HashDefaultAccess,
+    ser::{SerializeHashDefault, SerializeHashKey},
+    Deserialize, HashAccess, Serialize, SerializeHash, Value, Visitor,
+};
 use indexmap::IndexMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -179,6 +183,16 @@ impl Serialize for RbHash {
     where
         S: crate::SerializerTrait,
     {
-        todo!()
+        let mut current = serializer.serialize_hash(self.len(), self.default.is_some())?;
+        let mut iter = self.iter();
+        while let SerializeHash::Key(next) = current {
+            let (k, v) = iter.next().expect("should be a next value");
+            current = next.serialize_entry(k, v)?;
+        }
+        match current {
+            SerializeHash::Finished(v) => Ok(v),
+            SerializeHash::DefaultValue(d) => d.serialize_default(self.default.as_deref().unwrap()),
+            SerializeHash::Key(_) => unreachable!(),
+        }
     }
 }

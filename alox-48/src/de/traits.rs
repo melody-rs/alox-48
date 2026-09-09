@@ -409,8 +409,8 @@ pub trait HashKeyAccess<'de>: Sized {
         V: DeserializeSeed<'de>,
     {
         let (k, a) = self.next_key_seed(key_seed)?;
-        let (v, this) = a.next_value_seed(value_seed)?;
-        Ok((k, v, this))
+        let (v, next) = a.next_value_seed(value_seed)?;
+        Ok((k, v, next))
     }
 
     fn next_entry<K, V>(self) -> Result<(K, V, HashAccess<'de, Self>)>

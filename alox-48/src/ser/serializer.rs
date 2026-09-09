@@ -8,7 +8,11 @@
 use indexmap::IndexSet;
 
 use super::{Error, Kind, Result};
-use crate::{tag::Tag, BignumRef, Fixnum, FromPrimitive, Sym, Symbol};
+use crate::{
+    ser::{SerializeHashDefault, SerializeHashKey, SerializeHashValue},
+    tag::Tag,
+    BignumRef, Fixnum, FromPrimitive, SerializeHash, Sym, Symbol,
+};
 
 /// The `alox_48` serializer.
 #[derive(Debug, Clone)]
@@ -20,14 +24,6 @@ pub struct Serializer {
 
 #[derive(Debug)]
 pub struct SerializeIvars<'a> {
-    serializer: &'a mut Serializer,
-    len: usize,
-    index: usize,
-    state: MapState,
-}
-
-#[derive(Debug)]
-pub struct SerializeHash<'a> {
     serializer: &'a mut Serializer,
     len: usize,
     index: usize,
@@ -145,7 +141,7 @@ impl<'a> super::SerializerTrait for &'a mut Serializer {
     type Ok = ();
 
     type SerializeIvars = SerializeIvars<'a>;
-    type SerializeHash = SerializeHash<'a>;
+    type SerializeHashKey = SerializeHashImpl<'a>;
     type SerializeArray = SerializeArray<'a>;
 
     fn serialize_nil(self) -> Result<Self::Ok> {
@@ -192,16 +188,19 @@ impl<'a> super::SerializerTrait for &'a mut Serializer {
         Ok(())
     }
 
-    fn serialize_hash(self, len: usize) -> Result<Self::SerializeHash> {
-        self.write(Tag::Hash);
+    fn serialize_hash(
+        self,
+        len: usize,
+        has_default: bool,
+    ) -> Result<SerializeHash<Self::SerializeHashKey>> {
+        self.write(if has_default {
+            Tag::HashDefault
+        } else {
+            Tag::Hash
+        });
         self.write_usize(len)?;
 
-        Ok(SerializeHash {
-            serializer: self,
-            len,
-            index: 0,
-            state: MapState::Value, // we want to enforce getting a key next so we set the state to value
-        })
+        Ok(SerializeHashImpl::new(self, len, has_default).next_access())
     }
 
     fn serialize_array(self, len: usize) -> Result<Self::SerializeArray> {
@@ -391,56 +390,69 @@ impl super::SerializeIvars for SerializeIvars<'_> {
     }
 }
 
-impl super::SerializeHash for SerializeHash<'_> {
+#[derive(Debug)]
+pub struct SerializeHashImpl<'a> {
+    serializer: &'a mut Serializer,
+    len: usize,
+    index: usize,
+    has_default: bool,
+}
+
+impl<'a> SerializeHashImpl<'a> {
+    fn new(serializer: &'a mut Serializer, len: usize, has_default: bool) -> Self {
+        Self {
+            serializer,
+            index: 0,
+            len,
+            has_default,
+        }
+    }
+
+    fn next_access(self) -> SerializeHash<Self> {
+        match (self.index >= self.len, self.has_default) {
+            (false, _) => SerializeHash::Key(self),
+            (true, false) => SerializeHash::Finished(()),
+            (true, true) => SerializeHash::DefaultValue(self),
+        }
+    }
+}
+
+impl SerializeHashKey for SerializeHashImpl<'_> {
+    type SerializeValue = Self;
     type Ok = ();
 
-    fn serialize_key<K>(&mut self, k: &K) -> Result<()>
+    fn serialize_key<K>(mut self, k: &K) -> Result<Self::SerializeValue>
     where
-        K: crate::Serialize + ?Sized,
+        K: super::Serialize + ?Sized,
     {
         self.index += 1;
-        if self.index > self.len {
-            return Err(Error {
-                kind: Kind::OvershotProvidedLen(self.index, self.len),
-            });
-        }
-        match self.state {
-            MapState::Key => {
-                return Err(Error {
-                    kind: Kind::KeyAfterKey,
-                })
-            }
-            MapState::Value => self.state = MapState::Key,
-        }
-
         k.serialize(&mut *self.serializer)?;
-
-        Ok(())
+        Ok(self)
     }
+}
 
-    fn serialize_value<V>(&mut self, v: &V) -> Result<()>
+impl SerializeHashValue for SerializeHashImpl<'_> {
+    type SerializeDefault = Self;
+    type SerializeKey = Self;
+    type Ok = ();
+
+    fn serialize_value<V>(self, v: &V) -> Result<super::SerializeHash<Self::SerializeKey>>
     where
-        V: crate::Serialize + ?Sized,
+        V: super::Serialize + ?Sized,
     {
-        match self.state {
-            MapState::Value => {
-                return Err(Error {
-                    kind: Kind::ValueAfterValue,
-                })
-            }
-            MapState::Key => self.state = MapState::Value,
-        }
-        v.serialize(&mut *self.serializer)
+        v.serialize(&mut *self.serializer)?;
+        Ok(self.next_access())
     }
+}
 
-    fn end(self) -> Result<Self::Ok> {
-        if self.index < self.len {
-            Err(Error {
-                kind: Kind::UndershotProvidedLen(self.index, self.len),
-            })
-        } else {
-            Ok(())
-        }
+impl SerializeHashDefault for SerializeHashImpl<'_> {
+    type Ok = ();
+
+    fn serialize_default<V>(self, v: &V) -> Result<Self::Ok>
+    where
+        V: super::Serialize + ?Sized,
+    {
+        v.serialize(&mut *self.serializer)
     }
 }
 

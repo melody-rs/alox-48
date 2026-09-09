@@ -3,6 +3,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#![allow(missing_docs)]
 
 use super::Result;
 use crate::{BignumRef, Fixnum, Sym};
@@ -25,7 +26,7 @@ pub trait Serializer: Sized {
     /// The ivar serializer of this serializer.
     type SerializeIvars: SerializeIvars<Ok = Self::Ok>;
     /// The hash serializer of this serializer.
-    type SerializeHash: SerializeHash<Ok = Self::Ok>;
+    type SerializeHashKey: SerializeHashKey<Ok = Self::Ok>;
     /// The array serializer of this serializer.
     type SerializeArray: SerializeArray<Ok = Self::Ok>;
 
@@ -45,7 +46,11 @@ pub trait Serializer: Sized {
     fn serialize_f64(self, v: f64) -> Result<Self::Ok>;
 
     /// Serialize a hash.
-    fn serialize_hash(self, len: usize) -> Result<Self::SerializeHash>;
+    fn serialize_hash(
+        self,
+        len: usize,
+        has_default: bool,
+    ) -> Result<SerializeHash<Self::SerializeHashKey>>;
 
     /// Serialize an array.
     fn serialize_array(self, len: usize) -> Result<Self::SerializeArray>;
@@ -134,6 +139,7 @@ pub trait Serializer: Sized {
     }
 
     /// A convenience method for serializing a hashmap.
+    #[allow(clippy::panic_in_result_fn, clippy::panic)]
     fn collect_hash<K, V, I>(self, iter: I) -> Result<Self::Ok>
     where
         I: IntoIterator<Item = (K, V)>,
@@ -141,12 +147,13 @@ pub trait Serializer: Sized {
         K: Serialize,
         V: Serialize,
     {
-        let iter = iter.into_iter();
-        let mut serialize_hash = self.serialize_hash(iter.len())?;
-        for (key, value) in iter {
-            serialize_hash.serialize_entry(&key, &value)?;
+        let mut iter = iter.into_iter();
+        let mut current = self.serialize_hash(iter.len(), false)?;
+        while let SerializeHash::Key(access) = current {
+            let (k, v) = iter.next().expect("hash iter did not have enough items");
+            current = access.serialize_entry(&k, &v)?;
         }
-        serialize_hash.end()
+        Ok(current.into_finished().expect("should've been finished"))
     }
 }
 
@@ -188,35 +195,88 @@ pub trait SerializeIvars {
     fn end(self) -> Result<Self::Ok>;
 }
 
-/// A structure that can serialize a hash.
-pub trait SerializeHash {
-    /// The output of the serializer.
+pub enum SerializeHash<K: SerializeHashKey> {
+    Key(K),
+    DefaultValue(<K::SerializeValue as SerializeHashValue>::SerializeDefault),
+    Finished(K::Ok),
+}
+
+impl<K> std::fmt::Debug for SerializeHash<K>
+where
+    K: std::fmt::Debug + SerializeHashKey,
+    <<K as SerializeHashKey>::SerializeValue as SerializeHashValue>::SerializeDefault:
+        std::fmt::Debug,
+    K::Ok: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Key(k) => f.debug_tuple("SerializeHash::Key").field(k).finish(),
+            Self::DefaultValue(d) => f
+                .debug_tuple("SerializeHash::DefaultValue")
+                .field(d)
+                .finish(),
+            Self::Finished(v) => f.debug_tuple("SerializeHash::Finished").field(v).finish(),
+        }
+    }
+}
+
+impl<K> SerializeHash<K>
+where
+    K: SerializeHashKey,
+{
+    pub fn into_next_key(self) -> Option<K> {
+        match self {
+            Self::Key(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn is_finished(&self) -> bool {
+        matches!(self, SerializeHash::Finished(_))
+    }
+
+    pub fn into_finished(self) -> Option<K::Ok> {
+        match self {
+            Self::Finished(v) => Some(v),
+            _ => None,
+        }
+    }
+}
+
+pub trait SerializeHashKey: Sized {
+    type SerializeValue: SerializeHashValue<Ok = Self::Ok, SerializeKey = Self>;
     type Ok;
 
-    /// Serialize a key.
-    fn serialize_key<K>(&mut self, k: &K) -> Result<()>
+    fn serialize_key<K>(self, k: &K) -> Result<Self::SerializeValue>
     where
         K: Serialize + ?Sized;
 
-    /// Serialize a value.
-    ///
-    /// Must be called after `serialize_key`.
-    fn serialize_value<V>(&mut self, v: &V) -> Result<()>
-    where
-        V: Serialize + ?Sized;
-
-    /// Serialize a key and value.
-    fn serialize_entry<K, V>(&mut self, k: &K, v: &V) -> Result<()>
+    fn serialize_entry<K, V>(self, k: &K, v: &V) -> Result<SerializeHash<Self>>
     where
         K: Serialize + ?Sized,
         V: Serialize + ?Sized,
     {
-        self.serialize_key(k)?;
-        self.serialize_value(v)
+        self.serialize_key(k)
+            .and_then(|access| access.serialize_value(v))
     }
+}
 
-    /// End the serialization.
-    fn end(self) -> Result<Self::Ok>;
+pub trait SerializeHashValue {
+    type SerializeKey: SerializeHashKey<Ok = Self::Ok>;
+    type SerializeDefault: SerializeHashDefault<Ok = Self::Ok>;
+    type Ok;
+
+    fn serialize_value<V>(self, v: &V) -> Result<SerializeHash<Self::SerializeKey>>
+    where
+        V: Serialize + ?Sized;
+}
+
+pub trait SerializeHashDefault {
+    type Ok;
+
+    fn serialize_default<V>(self, v: &V) -> Result<Self::Ok>
+    where
+        V: Serialize + ?Sized;
 }
 
 /// A structure that can serialize an array.
