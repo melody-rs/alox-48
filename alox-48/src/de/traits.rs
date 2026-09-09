@@ -336,15 +336,14 @@ pub trait IvarAccess<'de> {
 /// Provides access to hash elements.
 pub enum HashAccess<'de, K: HashKeyAccess<'de>> {
     Key(K),
-    DefaultValue(<K::ValueAccess as HashValueAccess<'de>>::DefaultAccess),
+    DefaultValue(K::DefaultAccess),
     Finished,
 }
 
 impl<'de, K> std::fmt::Debug for HashAccess<'de, K>
 where
     K: std::fmt::Debug + HashKeyAccess<'de>,
-    <<K as HashKeyAccess<'de>>::ValueAccess as HashValueAccess<'de>>::DefaultAccess:
-        std::fmt::Debug,
+    K::DefaultAccess: std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -387,6 +386,7 @@ where
 #[allow(clippy::len_without_is_empty)]
 pub trait HashKeyAccess<'de>: Sized {
     type ValueAccess: HashValueAccess<'de, KeyAccess = Self>;
+    type DefaultAccess: HashDefaultAccess<'de>;
 
     fn next_key_seed<K>(self, seed: K) -> Result<(K::Value, Self::ValueAccess)>
     where
@@ -430,7 +430,6 @@ pub trait HashKeyAccess<'de>: Sized {
 #[allow(clippy::len_without_is_empty)]
 pub trait HashValueAccess<'de>: Sized {
     type KeyAccess: HashKeyAccess<'de, ValueAccess = Self>;
-    type DefaultAccess: HashDefaultAccess<'de>;
 
     fn next_value_seed<V>(self, seed: V) -> Result<(V::Value, HashAccess<'de, Self::KeyAccess>)>
     where

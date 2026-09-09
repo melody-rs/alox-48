@@ -112,7 +112,7 @@ pub use de::{
 #[doc(inline)]
 pub use ser::{
     ByteString as SerializeByteString, Error as SerError, Result as SerResult, Serialize,
-    SerializeArray, SerializeHash, SerializeIvars, Serializer, SerializerTrait,
+    SerializeArray, SerializeIvars, Serializer, SerializerTrait,
 };
 
 #[cfg(feature = "derive")]

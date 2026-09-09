@@ -14,8 +14,7 @@ pub use error::{Error, Kind};
 pub use serializer::Serializer;
 
 pub use traits::{
-    Serialize, SerializeArray, SerializeHash, SerializeHashDefault, SerializeHashKey,
-    SerializeHashValue, SerializeIvars, Serializer as SerializerTrait,
+    hash, hash_default, Serialize, SerializeArray, SerializeIvars, Serializer as SerializerTrait,
 };
 
 /// A helper to ensure byte slices are serialized as strings.

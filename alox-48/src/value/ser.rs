@@ -5,10 +5,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::{Object, RbFields, RbHash, RbString, Symbol, Userdata, Value};
 use crate::{
-    ser::{
-        Error, Kind, Result, Serialize, SerializeHashDefault, SerializeHashKey, SerializeHashValue,
-    },
-    BignumRef, Fixnum, Instance, RbArray, RbStruct, SerializeHash, SerializerTrait, Sym,
+    ser::{hash, hash_default, Error, Kind, Result, Serialize},
+    BignumRef, Fixnum, Instance, RbArray, RbStruct, SerializerTrait, Sym,
 };
 
 impl Serialize for Value {
@@ -72,7 +70,8 @@ impl SerializerTrait for Serializer {
     type Ok = Value;
 
     type SerializeIvars = SerializeIvars;
-    type SerializeHashKey = SerializeHashKeyImpl;
+    type SerializeHash = hash_impl::SerializeHashKeyImpl;
+    type SerializeHashDefault = hash_default_impl::SerializeHashKeyImpl;
     type SerializeArray = SerializeArray;
 
     fn serialize_nil(self) -> Result<Self::Ok> {
@@ -95,20 +94,32 @@ impl SerializerTrait for Serializer {
         Ok(Value::Float(v))
     }
 
-    fn serialize_hash(
-        self,
-        len: usize,
-        has_default: bool,
-    ) -> Result<SerializeHash<Self::SerializeHashKey>> {
+    fn serialize_hash(self, len: usize) -> Result<hash::SerializeHash<Self::SerializeHash>> {
         let hash = RbHash::with_capacity(len);
-        Ok(match (len >= hash.len(), has_default) {
-            (false, _) => SerializeHash::Key(SerializeHashKeyImpl {
+        Ok(if len >= hash.len() {
+            hash::SerializeHash::Finished(Value::Hash(hash))
+        } else {
+            hash::SerializeHash::Key(hash_impl::SerializeHashKeyImpl {
                 hash,
                 total_len: len,
-                has_default,
-            }),
-            (true, true) => SerializeHash::DefaultValue(SerializeHashDefaultImpl { hash }),
-            (true, false) => SerializeHash::Finished(Value::Hash(hash)),
+            })
+        })
+    }
+
+    fn serialize_hash_default(
+        self,
+        len: usize,
+    ) -> Result<hash_default::SerializeHash<Self::SerializeHashDefault>> {
+        let hash = RbHash::with_capacity(len);
+        Ok(if len >= hash.len() {
+            hash_default::SerializeHash::DefaultValue(hash_default_impl::SerializeHashDefaultImpl(
+                hash,
+            ))
+        } else {
+            hash_default::SerializeHash::Key(hash_default_impl::SerializeHashKeyImpl {
+                hash,
+                total_len: len,
+            })
         })
     }
 
@@ -266,93 +277,149 @@ impl crate::SerializeIvars for SerializeIvars {
     }
 }
 
-#[derive(Debug)]
-pub struct SerializeHashKeyImpl {
-    hash: RbHash,
-    total_len: usize,
-    has_default: bool,
-}
+mod hash_impl {
+    use super::{RbHash, Serializer, Value};
+    use crate::ser::hash::{SerializeHash, SerializeHashKey, SerializeHashValue};
+    use crate::ser::{Result, Serialize};
 
-impl SerializeHashKey for SerializeHashKeyImpl {
-    type SerializeValue = SerializeHashValueImpl;
-    type Ok = Value;
-
-    fn serialize_key<K>(self, k: &K) -> Result<Self::SerializeValue>
-    where
-        K: Serialize + ?Sized,
-    {
-        let Self {
-            hash,
-            total_len,
-            has_default,
-        } = self;
-        let next_key = k.serialize(Serializer)?;
-
-        Ok(SerializeHashValueImpl {
-            hash,
-            next_key,
-            total_len,
-            has_default,
-        })
+    #[derive(Debug)]
+    pub struct SerializeHashKeyImpl {
+        pub hash: RbHash,
+        pub total_len: usize,
     }
-}
 
-#[derive(Debug)]
-pub struct SerializeHashValueImpl {
-    hash: RbHash,
-    next_key: Value,
-    total_len: usize,
-    has_default: bool,
-}
+    impl SerializeHashKey for SerializeHashKeyImpl {
+        type SerializeValue = SerializeHashValueImpl;
+        type Ok = Value;
 
-impl SerializeHashValue for SerializeHashValueImpl {
-    type SerializeKey = SerializeHashKeyImpl;
-    type SerializeDefault = SerializeHashDefaultImpl;
-    type Ok = Value;
+        fn serialize_key<K>(self, k: &K) -> Result<Self::SerializeValue>
+        where
+            K: Serialize + ?Sized,
+        {
+            let Self { hash, total_len } = self;
+            let next_key = k.serialize(Serializer)?;
 
-    fn serialize_value<V>(self, v: &V) -> Result<crate::SerializeHash<Self::SerializeKey>>
-    where
-        V: Serialize + ?Sized,
-    {
-        let Self {
-            mut hash,
-            next_key,
-            total_len,
-            has_default,
-        } = self;
-
-        let value = v.serialize(Serializer)?;
-        hash.insert(next_key, value);
-        Ok(match (self.total_len >= hash.len(), self.has_default) {
-            (false, _) => SerializeHash::Key(Self::SerializeKey {
+            Ok(SerializeHashValueImpl {
                 hash,
+                next_key,
                 total_len,
-                has_default,
-            }),
-            (true, true) => SerializeHash::DefaultValue(Self::SerializeDefault { hash }),
-            (true, false) => SerializeHash::Finished(Value::Hash(hash)),
-        })
+            })
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct SerializeHashValueImpl {
+        hash: RbHash,
+        next_key: Value,
+        total_len: usize,
+    }
+
+    impl SerializeHashValue for SerializeHashValueImpl {
+        type SerializeKey = SerializeHashKeyImpl;
+        type Ok = Value;
+
+        fn serialize_value<V>(self, v: &V) -> Result<SerializeHash<Self::SerializeKey>>
+        where
+            V: Serialize + ?Sized,
+        {
+            let Self {
+                mut hash,
+                next_key,
+                total_len,
+            } = self;
+
+            let value = v.serialize(Serializer)?;
+            hash.insert(next_key, value);
+            Ok(if self.total_len >= hash.len() {
+                SerializeHash::Finished(Value::Hash(hash))
+            } else {
+                SerializeHash::Key(Self::SerializeKey { hash, total_len })
+            })
+        }
     }
 }
 
-#[derive(Debug)]
-pub struct SerializeHashDefaultImpl {
-    hash: RbHash,
-}
+mod hash_default_impl {
+    use super::{RbHash, Serializer, Value};
+    use crate::ser::hash_default::{
+        SerializeHash, SerializeHashDefault, SerializeHashKey, SerializeHashValue,
+    };
+    use crate::ser::{Result, Serialize};
 
-impl SerializeHashDefault for SerializeHashDefaultImpl {
-    type Ok = Value;
+    #[derive(Debug)]
+    pub struct SerializeHashKeyImpl {
+        pub hash: RbHash,
+        pub total_len: usize,
+    }
 
-    fn serialize_default<V>(self, v: &V) -> Result<Self::Ok>
-    where
-        V: Serialize + ?Sized,
-    {
-        let Self { mut hash } = self;
+    impl SerializeHashKey for SerializeHashKeyImpl {
+        type SerializeDefault = SerializeHashDefaultImpl;
+        type SerializeValue = SerializeHashValueImpl;
+        type Ok = Value;
 
-        let default = v.serialize(Serializer)?;
-        hash.default = Some(Box::new(default));
+        fn serialize_key<K>(self, k: &K) -> Result<Self::SerializeValue>
+        where
+            K: Serialize + ?Sized,
+        {
+            let Self { hash, total_len } = self;
+            let next_key = k.serialize(Serializer)?;
 
-        Ok(Value::Hash(hash))
+            Ok(SerializeHashValueImpl {
+                hash,
+                next_key,
+                total_len,
+            })
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct SerializeHashValueImpl {
+        hash: RbHash,
+        next_key: Value,
+        total_len: usize,
+    }
+
+    impl SerializeHashValue for SerializeHashValueImpl {
+        type SerializeKey = SerializeHashKeyImpl;
+        type Ok = Value;
+
+        fn serialize_value<V>(self, v: &V) -> Result<SerializeHash<Self::SerializeKey>>
+        where
+            V: Serialize + ?Sized,
+        {
+            let Self {
+                mut hash,
+                next_key,
+                total_len,
+            } = self;
+
+            let value = v.serialize(Serializer)?;
+            hash.insert(next_key, value);
+            Ok(if self.total_len >= hash.len() {
+                SerializeHash::DefaultValue(SerializeHashDefaultImpl(hash))
+            } else {
+                SerializeHash::Key(Self::SerializeKey { hash, total_len })
+            })
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct SerializeHashDefaultImpl(pub RbHash);
+
+    impl SerializeHashDefault for SerializeHashDefaultImpl {
+        type Ok = Value;
+
+        fn serialize_default<V>(self, v: &V) -> Result<Self::Ok>
+        where
+            V: Serialize + ?Sized,
+        {
+            let Self(mut hash) = self;
+
+            let default = v.serialize(Serializer)?;
+            hash.default = Some(Box::new(default));
+
+            Ok(Value::Hash(hash))
+        }
     }
 }
 

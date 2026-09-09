@@ -34,7 +34,7 @@ pub fn derive_inner(input: &syn::DeriveInput) -> proc_macro2::TokenStream {
         const _: () = {
             #alox_crate_path
             use _alox_48::{
-                Serialize, SerializeArray, SerializeHash, SerializeIvars, SerializerTrait, ser::Error as SerError, Sym
+                Serialize, SerializeArray, SerializeIvars, SerializerTrait, ser::Error as SerError, Sym
             };
             #serialization_impl
         };

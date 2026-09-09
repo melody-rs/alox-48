@@ -2,8 +2,8 @@
 
 use crate::{
     de::HashDefaultAccess,
-    ser::{SerializeHashDefault, SerializeHashKey},
-    Deserialize, HashAccess, Serialize, SerializeHash, Value, Visitor,
+    ser::{hash, hash_default},
+    Deserialize, HashAccess, Serialize, Value, Visitor,
 };
 use indexmap::IndexMap;
 
@@ -178,21 +178,52 @@ impl<'de> Deserialize<'de> for RbHash {
     }
 }
 
+fn serialize_with_default<S: crate::SerializerTrait>(
+    serializer: S,
+    map: &ValueMap,
+    default: &Value,
+) -> crate::SerResult<S::Ok> {
+    use hash_default::{SerializeHashDefault, SerializeHashKey};
+
+    let mut current = serializer.serialize_hash_default(map.len())?;
+    let mut iter = map.iter();
+
+    loop {
+        match current {
+            hash_default::SerializeHash::Key(next) => {
+                let (k, v) = iter.next().expect("should be a next value");
+                current = next.serialize_entry(k, v)?;
+            }
+            hash_default::SerializeHash::DefaultValue(d) => break d.serialize_default(default),
+        }
+    }
+}
+
+fn serialize<S: crate::SerializerTrait>(serializer: S, map: &ValueMap) -> crate::SerResult<S::Ok> {
+    use hash::SerializeHashKey;
+
+    let mut current = serializer.serialize_hash(map.len())?;
+    let mut iter = map.iter();
+
+    loop {
+        match current {
+            hash::SerializeHash::Key(next) => {
+                let (k, v) = iter.next().expect("should be a next value");
+                current = next.serialize_entry(k, v)?;
+            }
+            hash::SerializeHash::Finished(v) => break Ok(v),
+        }
+    }
+}
+
 impl Serialize for RbHash {
     fn serialize<S>(&self, serializer: S) -> crate::SerResult<S::Ok>
     where
         S: crate::SerializerTrait,
     {
-        let mut current = serializer.serialize_hash(self.len(), self.default.is_some())?;
-        let mut iter = self.iter();
-        while let SerializeHash::Key(next) = current {
-            let (k, v) = iter.next().expect("should be a next value");
-            current = next.serialize_entry(k, v)?;
-        }
-        match current {
-            SerializeHash::Finished(v) => Ok(v),
-            SerializeHash::DefaultValue(d) => d.serialize_default(self.default.as_deref().unwrap()),
-            SerializeHash::Key(_) => unreachable!(),
+        match self.default.as_deref() {
+            Some(default) => serialize_with_default(serializer, &self.map, default),
+            None => serialize(serializer, &self.map),
         }
     }
 }

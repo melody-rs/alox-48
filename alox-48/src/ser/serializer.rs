@@ -8,11 +8,7 @@
 use indexmap::IndexSet;
 
 use super::{Error, Kind, Result};
-use crate::{
-    ser::{SerializeHashDefault, SerializeHashKey, SerializeHashValue},
-    tag::Tag,
-    BignumRef, Fixnum, FromPrimitive, SerializeHash, Sym, Symbol,
-};
+use crate::{ser::hash_default, tag::Tag, BignumRef, Fixnum, FromPrimitive, Sym, Symbol};
 
 /// The `alox_48` serializer.
 #[derive(Debug, Clone)]
@@ -141,7 +137,8 @@ impl<'a> super::SerializerTrait for &'a mut Serializer {
     type Ok = ();
 
     type SerializeIvars = SerializeIvars<'a>;
-    type SerializeHashKey = SerializeHashImpl<'a>;
+    type SerializeHash = hash_impl::SerializeHashImpl<'a>;
+    type SerializeHashDefault = hash_default_impl::SerializeHashImpl<'a>;
     type SerializeArray = SerializeArray<'a>;
 
     fn serialize_nil(self) -> Result<Self::Ok> {
@@ -188,19 +185,21 @@ impl<'a> super::SerializerTrait for &'a mut Serializer {
         Ok(())
     }
 
-    fn serialize_hash(
-        self,
-        len: usize,
-        has_default: bool,
-    ) -> Result<SerializeHash<Self::SerializeHashKey>> {
-        self.write(if has_default {
-            Tag::HashDefault
-        } else {
-            Tag::Hash
-        });
+    fn serialize_hash(self, len: usize) -> Result<super::hash::SerializeHash<Self::SerializeHash>> {
+        self.write(Tag::Hash);
         self.write_usize(len)?;
 
-        Ok(SerializeHashImpl::new(self, len, has_default).next_access())
+        Ok(hash_impl::SerializeHashImpl::new(self, len).next_access())
+    }
+
+    fn serialize_hash_default(
+        self,
+        len: usize,
+    ) -> Result<hash_default::SerializeHash<Self::SerializeHashDefault>> {
+        self.write(Tag::HashDefault);
+        self.write_usize(len)?;
+
+        Ok(hash_default_impl::SerializeHashImpl::new(self, len).next_access())
     }
 
     fn serialize_array(self, len: usize) -> Result<Self::SerializeArray> {
@@ -390,72 +389,6 @@ impl super::SerializeIvars for SerializeIvars<'_> {
     }
 }
 
-#[derive(Debug)]
-pub struct SerializeHashImpl<'a> {
-    serializer: &'a mut Serializer,
-    len: usize,
-    index: usize,
-    has_default: bool,
-}
-
-impl<'a> SerializeHashImpl<'a> {
-    fn new(serializer: &'a mut Serializer, len: usize, has_default: bool) -> Self {
-        Self {
-            serializer,
-            index: 0,
-            len,
-            has_default,
-        }
-    }
-
-    fn next_access(self) -> SerializeHash<Self> {
-        match (self.index >= self.len, self.has_default) {
-            (false, _) => SerializeHash::Key(self),
-            (true, false) => SerializeHash::Finished(()),
-            (true, true) => SerializeHash::DefaultValue(self),
-        }
-    }
-}
-
-impl SerializeHashKey for SerializeHashImpl<'_> {
-    type SerializeValue = Self;
-    type Ok = ();
-
-    fn serialize_key<K>(mut self, k: &K) -> Result<Self::SerializeValue>
-    where
-        K: super::Serialize + ?Sized,
-    {
-        self.index += 1;
-        k.serialize(&mut *self.serializer)?;
-        Ok(self)
-    }
-}
-
-impl SerializeHashValue for SerializeHashImpl<'_> {
-    type SerializeDefault = Self;
-    type SerializeKey = Self;
-    type Ok = ();
-
-    fn serialize_value<V>(self, v: &V) -> Result<super::SerializeHash<Self::SerializeKey>>
-    where
-        V: super::Serialize + ?Sized,
-    {
-        v.serialize(&mut *self.serializer)?;
-        Ok(self.next_access())
-    }
-}
-
-impl SerializeHashDefault for SerializeHashImpl<'_> {
-    type Ok = ();
-
-    fn serialize_default<V>(self, v: &V) -> Result<Self::Ok>
-    where
-        V: super::Serialize + ?Sized,
-    {
-        v.serialize(&mut *self.serializer)
-    }
-}
-
 impl super::SerializeArray for SerializeArray<'_> {
     type Ok = ();
 
@@ -474,6 +407,138 @@ impl super::SerializeArray for SerializeArray<'_> {
             })
         } else {
             Ok(())
+        }
+    }
+}
+
+mod hash_default_impl {
+    use super::Serializer;
+
+    use crate::ser::hash_default::{
+        SerializeHash, SerializeHashDefault, SerializeHashKey, SerializeHashValue,
+    };
+    use crate::ser::{Result, Serialize};
+
+    #[derive(Debug)]
+    pub struct SerializeHashImpl<'a> {
+        serializer: &'a mut Serializer,
+        len: usize,
+        index: usize,
+    }
+
+    impl<'a> SerializeHashImpl<'a> {
+        pub fn new(serializer: &'a mut Serializer, len: usize) -> Self {
+            Self {
+                serializer,
+                index: 0,
+                len,
+            }
+        }
+
+        pub fn next_access(self) -> SerializeHash<Self> {
+            if self.index >= self.len {
+                SerializeHash::DefaultValue(self)
+            } else {
+                SerializeHash::Key(self)
+            }
+        }
+    }
+
+    impl SerializeHashKey for SerializeHashImpl<'_> {
+        type SerializeValue = Self;
+        type SerializeDefault = Self;
+        type Ok = ();
+
+        fn serialize_key<K>(mut self, k: &K) -> Result<Self::SerializeValue>
+        where
+            K: Serialize + ?Sized,
+        {
+            self.index += 1;
+            k.serialize(&mut *self.serializer)?;
+            Ok(self)
+        }
+    }
+
+    impl SerializeHashValue for SerializeHashImpl<'_> {
+        type SerializeKey = Self;
+        type Ok = ();
+
+        fn serialize_value<V>(self, v: &V) -> Result<SerializeHash<Self::SerializeKey>>
+        where
+            V: Serialize + ?Sized,
+        {
+            v.serialize(&mut *self.serializer)?;
+            Ok(self.next_access())
+        }
+    }
+
+    impl SerializeHashDefault for SerializeHashImpl<'_> {
+        type Ok = ();
+
+        fn serialize_default<V>(self, v: &V) -> Result<Self::Ok>
+        where
+            V: Serialize + ?Sized,
+        {
+            v.serialize(&mut *self.serializer)
+        }
+    }
+}
+
+mod hash_impl {
+    use super::Serializer;
+
+    use crate::ser::hash::{SerializeHash, SerializeHashKey, SerializeHashValue};
+    use crate::ser::{Result, Serialize};
+
+    #[derive(Debug)]
+    pub struct SerializeHashImpl<'a> {
+        serializer: &'a mut Serializer,
+        len: usize,
+        index: usize,
+    }
+
+    impl<'a> SerializeHashImpl<'a> {
+        pub fn new(serializer: &'a mut Serializer, len: usize) -> Self {
+            Self {
+                serializer,
+                index: 0,
+                len,
+            }
+        }
+
+        pub fn next_access(self) -> SerializeHash<Self> {
+            if self.index >= self.len {
+                SerializeHash::Finished(())
+            } else {
+                SerializeHash::Key(self)
+            }
+        }
+    }
+
+    impl SerializeHashKey for SerializeHashImpl<'_> {
+        type SerializeValue = Self;
+        type Ok = ();
+
+        fn serialize_key<K>(mut self, k: &K) -> Result<Self::SerializeValue>
+        where
+            K: Serialize + ?Sized,
+        {
+            self.index += 1;
+            k.serialize(&mut *self.serializer)?;
+            Ok(self)
+        }
+    }
+
+    impl SerializeHashValue for SerializeHashImpl<'_> {
+        type SerializeKey = Self;
+        type Ok = ();
+
+        fn serialize_value<V>(self, v: &V) -> Result<SerializeHash<Self::SerializeKey>>
+        where
+            V: Serialize + ?Sized,
+        {
+            v.serialize(&mut *self.serializer)?;
+            Ok(self.next_access())
         }
     }
 }

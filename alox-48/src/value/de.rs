@@ -372,6 +372,7 @@ impl<'de> ValueHashAccess<'de> {
 
 impl<'de> HashKeyAccess<'de> for ValueHashAccess<'de> {
     type ValueAccess = Self;
+    type DefaultAccess = ValueDefaultAccess<'de>;
 
     fn next_key_seed<K>(self, seed: K) -> Result<(K::Value, Self::ValueAccess)>
     where
@@ -397,7 +398,6 @@ impl<'de> HashKeyAccess<'de> for ValueHashAccess<'de> {
 
 impl<'de> HashValueAccess<'de> for ValueHashAccess<'de> {
     type KeyAccess = Self;
-    type DefaultAccess = ValueDefaultAccess<'de>;
 
     fn next_value_seed<V>(self, seed: V) -> Result<(V::Value, HashAccess<'de, Self::KeyAccess>)>
     where

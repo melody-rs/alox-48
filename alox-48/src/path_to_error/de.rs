@@ -399,6 +399,7 @@ where
     X: HashKeyAccess<'de>,
 {
     type ValueAccess = Wrapped<'a, X::ValueAccess>;
+    type DefaultAccess = Wrapped<'a, X::DefaultAccess>;
 
     fn next_key_seed<K>(self, seed: K) -> DeResult<(K::Value, Self::ValueAccess)>
     where
@@ -437,7 +438,6 @@ where
     X: HashValueAccess<'de>,
 {
     type KeyAccess = Wrapped<'a, X::KeyAccess>;
-    type DefaultAccess = Wrapped<'a, X::DefaultAccess>;
 
     fn next_value_seed<V>(self, seed: V) -> DeResult<(V::Value, HashAccess<'de, Self::KeyAccess>)>
     where

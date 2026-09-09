@@ -682,6 +682,7 @@ impl<'de, 'a> HashAccessImpl<'de, 'a> {
 
 impl<'de> HashKeyAccess<'de> for &mut HashAccessImpl<'de, '_> {
     type ValueAccess = Self;
+    type DefaultAccess = Self;
 
     fn next_key_seed<K>(self, seed: K) -> Result<(K::Value, Self::ValueAccess)>
     where
@@ -701,7 +702,6 @@ impl<'de> HashKeyAccess<'de> for &mut HashAccessImpl<'de, '_> {
 
 impl<'de> HashValueAccess<'de> for &mut HashAccessImpl<'de, '_> {
     type KeyAccess = Self;
-    type DefaultAccess = Self;
 
     fn next_value_seed<V>(self, seed: V) -> Result<(V::Value, HashAccess<'de, Self::KeyAccess>)>
     where
