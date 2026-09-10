@@ -9,10 +9,7 @@
 #![allow(clippy::cast_possible_wrap)]
 #![allow(clippy::cast_lossless)]
 
-use super::{
-    ignored::Ignored, DeserializeSeed, Error, HashDefaultAccess, HashKeyAccess, HashValueAccess,
-    Kind, Result,
-};
+use super::{ignored::Ignored, DeserializeSeed, Error, Kind, Result};
 use crate::{tag::Tag, BignumRef, Continue, Deserialize, Fixnum, FromPrimitive, Sym, Visitor};
 
 /// The alox-48 deserializer.
@@ -301,6 +298,8 @@ impl<'de> super::DeserializerTrait<'de> for &mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        use super::{HashDefaultAccess as _, HashKeyAccess as _}; // just so we can use em
+
         if self.cursor.peek_tag()?.is_object_link_referenceable() {
             self.register_obj();
         }
@@ -347,15 +346,12 @@ impl<'de> super::DeserializerTrait<'de> for &mut Deserializer<'de> {
                 Ok(result)
             }
             Tag::Hash => {
-                let len = self.read_usize()?;
+                let length = self.read_usize()?;
+                let mut access = HashAccess::<No>::new(&mut *self, length);
 
-                // annoyingly, this sort of has an issue where we know the concrete type here. oh well
-                let mut access = HashAccessImpl::<No>::new(self, len);
-                let current = access.next_access();
+                let result = visitor.visit_hash(access.next())?;
 
-                let result = visitor.visit_hash(current)?;
-
-                if let Some(mut current) = access.consume_remaining() {
+                if let Some(mut current) = access.leftovers() {
                     // Consume remaining elements that weren't deserialized
                     while let Continue::Next(a) = current {
                         let (_, _, next) = a.next_entry::<Ignored, Ignored>()?;
@@ -366,18 +362,14 @@ impl<'de> super::DeserializerTrait<'de> for &mut Deserializer<'de> {
                 Ok(result)
             }
             Tag::HashDefault => {
-                let len = self.read_usize()?;
+                let length = self.read_usize()?;
+                let mut access = HashAccess::<Yes>::new(&mut *self, length);
 
-                // annoyingly, this sort of has an issue where we know the concrete type here. oh well
-                let mut access = HashAccessImpl::<Yes>::new(self, len);
-                let current = access.next_access();
+                let result = visitor.visit_hash_default(access.next())?;
 
-                let result = visitor.visit_hash_default(current)?;
-
-                // if we didn't read the default value yet
                 // this has to be in a seperate branch like this,
                 // because we're unsure if the default value has been read or not.
-                if let Some(mut current) = access.consume_remaining() {
+                if let Some(mut current) = access.leftovers() {
                     // Consume remaining elements that weren't deserialized
                     loop {
                         match current {
@@ -679,125 +671,149 @@ impl<'de> super::ArrayAccess<'de> for ArrayAccess<'de, '_> {
     }
 }
 
-pub trait HasDefault: Sized {
-    type Finished<'a, 'de, 'deser>
+pub trait HasDefault: Sized + 'static {
+    type Finished<'de, 'deser, 'access>
     where
-        Self: 'a,
-        'de: 'a,
         'de: 'deser,
-        'deser: 'a;
+        'de: 'access,
+        'deser: 'access;
 
-    fn next_access<'a, 'de, 'deser>(
-        access: &'a mut HashAccessImpl<'de, 'deser, Self>,
-    ) -> Continue<&'a mut HashAccessImpl<'de, 'deser, Self>, Self::Finished<'a, 'de, 'deser>>;
-}
-
-pub struct HashAccessImpl<'de, 'deser, T> {
-    deserializer: &'deser mut Deserializer<'de>,
-    // current index
-    index: usize,
-    len: usize,
-    marker: std::marker::PhantomData<T>,
-    leftover: bool,
+    fn create_finished<'de, 'deser, 'access>(
+        access: &'access mut HashAccess<'de, 'deser, Self>,
+    ) -> Self::Finished<'de, 'deser, 'access>;
 }
 
 pub struct Yes;
 
+impl HasDefault for Yes {
+    type Finished<'de, 'deser, 'access>
+        = HashDefaultAccess<'de, 'deser, 'access>
+    where
+        'de: 'deser,
+        'de: 'access,
+        'deser: 'access;
+
+    fn create_finished<'de, 'deser, 'access>(
+        access: &'access mut HashAccess<'de, 'deser, Self>,
+    ) -> Self::Finished<'de, 'deser, 'access> {
+        HashDefaultAccess(access)
+    }
+}
+
 pub struct No;
 
-impl HasDefault for Yes {
-    type Finished<'a, 'de, 'deser>
-        = &'a mut HashAccessImpl<'de, 'deser, Self>
-    where
-        Self: 'a,
-        'de: 'a,
-        'de: 'deser,
-        'deser: 'a;
-
-    fn next_access<'a, 'de, 'deser>(
-        access: &'a mut HashAccessImpl<'de, 'deser, Self>,
-    ) -> Continue<&'a mut HashAccessImpl<'de, 'deser, Self>, Self::Finished<'a, 'de, 'deser>> {
-        if access.index >= access.len {
-            Continue::Finished(access)
-        } else {
-            Continue::Next(access)
-        }
-    }
-}
-
 impl HasDefault for No {
-    type Finished<'a, 'de, 'deser>
+    type Finished<'de, 'deser, 'access>
         = ()
     where
-        Self: 'a,
-        'de: 'a,
         'de: 'deser,
-        'deser: 'a;
+        'de: 'access,
+        'deser: 'access;
 
-    fn next_access<'a, 'de, 'deser>(
-        access: &'a mut HashAccessImpl<'de, 'deser, Self>,
-    ) -> Continue<&'a mut HashAccessImpl<'de, 'deser, Self>, Self::Finished<'a, 'de, 'deser>> {
-        if access.index >= access.len {
-            access.leftover = false;
-            Continue::Finished(())
-        } else {
-            Continue::Next(access)
-        }
+    fn create_finished<'de, 'deser, 'access>(
+        access: &'access mut HashAccess<'de, 'deser, Self>,
+    ) -> Self::Finished<'de, 'deser, 'access> {
+        access.finished = true;
     }
 }
 
-impl<'de, 'a, T> HashAccessImpl<'de, 'a, T>
+pub struct HashAccess<'de, 'a, T> {
+    deser: &'a mut Deserializer<'de>,
+    finished: bool,
+    iter: std::ops::Range<usize>,
+    marker: std::marker::PhantomData<T>,
+}
+
+#[allow(type_alias_bounds)] // needed to use ::Finished
+type HashContinue<'de, 'deser, 'access, T>
+where
+    T: HasDefault,
+= Continue<HashKeyAccess<'de, 'deser, 'access, T>, T::Finished<'de, 'deser, 'access>>;
+
+impl<'de, 'deser, T> HashAccess<'de, 'deser, T>
 where
     T: HasDefault,
 {
-    fn new(deserializer: &'a mut Deserializer<'de>, len: usize) -> Self {
+    fn new(deser: &'deser mut Deserializer<'de>, length: usize) -> Self {
         Self {
-            deserializer,
-            index: 0,
-            len,
+            deser,
+            finished: false,
+            iter: 0..length,
             marker: std::marker::PhantomData,
-            leftover: true,
         }
     }
 
-    fn next_access(&mut self) -> Continue<&mut Self, T::Finished<'_, 'de, 'a>> {
-        T::next_access(self)
+    fn next(&mut self) -> HashContinue<'de, 'deser, '_, T> {
+        match self.iter.next() {
+            Some(_) => Continue::Next(HashKeyAccess(self)),
+            None => Continue::Finished(T::create_finished(self)),
+        }
     }
 
-    fn consume_remaining(&mut self) -> Option<Continue<&mut Self, T::Finished<'_, 'de, 'a>>> {
-        self.leftover.then(|| T::next_access(self))
+    fn leftovers(&mut self) -> Option<HashContinue<'de, 'deser, '_, T>> {
+        (!self.finished).then(|| self.next())
     }
 }
 
-impl<'a, 'de, 'deser, T> HashKeyAccess<'de> for &'a mut HashAccessImpl<'de, 'deser, T>
+pub struct HashKeyAccess<'de, 'deser, 'access, T>(&'access mut HashAccess<'de, 'deser, T>);
+
+impl<'de, 'deser, 'access, T> HashKeyAccess<'de, 'deser, 'access, T>
 where
     T: HasDefault,
 {
-    type ValueAccess = Self;
-    type Finished = T::Finished<'a, 'de, 'deser>;
+    fn into_value_access<V>(self, v: V) -> (V, HashValueAccess<'de, 'deser, 'access, T>) {
+        (v, HashValueAccess(self.0))
+    }
+}
+
+impl<'de, 'deser, 'access, T> super::HashKeyAccess<'de> for HashKeyAccess<'de, 'deser, 'access, T>
+where
+    T: HasDefault,
+{
+    type ValueAccess = HashValueAccess<'de, 'deser, 'access, T>;
+    type Finished = T::Finished<'de, 'deser, 'access>;
 
     fn next_key_seed<K>(self, seed: K) -> Result<(K::Value, Self::ValueAccess)>
     where
         K: DeserializeSeed<'de>,
     {
-        seed.deserialize(&mut *self.deserializer).map(|v| (v, self))
+        seed.deserialize(&mut *self.0.deser)
+            .map(|v| self.into_value_access(v))
     }
 
     fn len(&self) -> usize {
-        self.len
+        self.0.iter.end
     }
 
     fn index(&self) -> usize {
-        self.index
+        self.0.iter.start
     }
 }
 
-impl<'a, 'de, 'deser, T> HashValueAccess<'de> for &'a mut HashAccessImpl<'de, 'deser, T>
+pub struct HashValueAccess<'de, 'deser, 'access, T>(&'access mut HashAccess<'de, 'deser, T>);
+
+impl<'de, 'deser, 'access, T> HashValueAccess<'de, 'deser, 'access, T>
 where
     T: HasDefault,
 {
-    type KeyAccess = Self;
-    type Finished = T::Finished<'a, 'de, 'deser>;
+    fn into_next_access<V>(
+        self,
+        v: V,
+    ) -> (
+        V,
+        Continue<HashKeyAccess<'de, 'deser, 'access, T>, T::Finished<'de, 'deser, 'access>>,
+    ) {
+        (v, self.0.next())
+    }
+}
+
+impl<'de, 'deser, 'access, T> super::HashValueAccess<'de>
+    for HashValueAccess<'de, 'deser, 'access, T>
+where
+    T: HasDefault,
+{
+    type KeyAccess = HashKeyAccess<'de, 'deser, 'access, T>;
+    type Finished = T::Finished<'de, 'deser, 'access>;
 
     fn next_value_seed<V>(
         self,
@@ -806,26 +822,27 @@ where
     where
         V: DeserializeSeed<'de>,
     {
-        self.index += 1;
-        seed.deserialize(&mut *self.deserializer)
-            .map(|v| (v, T::next_access(self)))
+        seed.deserialize(&mut *self.0.deser)
+            .map(|v| self.into_next_access(v))
     }
 
     fn len(&self) -> usize {
-        self.len
+        self.0.iter.end
     }
 
     fn index(&self) -> usize {
-        self.index
+        self.0.iter.start
     }
 }
 
-impl<'de> HashDefaultAccess<'de> for &mut HashAccessImpl<'de, '_, Yes> {
+pub struct HashDefaultAccess<'de, 'deser, 'access>(&'access mut HashAccess<'de, 'deser, Yes>);
+
+impl<'de> super::HashDefaultAccess<'de> for HashDefaultAccess<'de, '_, '_> {
     fn deserialize_default_seed<V>(self, seed: V) -> Result<V::Value>
     where
         V: DeserializeSeed<'de>,
     {
-        self.leftover = false;
-        seed.deserialize(&mut *self.deserializer)
+        self.0.finished = true;
+        seed.deserialize(&mut *self.0.deser)
     }
 }
