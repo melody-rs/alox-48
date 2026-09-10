@@ -6,7 +6,7 @@
 
 use super::{add_context, Context, Trace};
 use crate::{
-    de::{DeserializeSeed, DeserializerTrait, HashDefaultAccess, HashKeyAccess, HashValueAccess},
+    de::{DeserializeSeed, DeserializerTrait},
     ArrayAccess, BignumRef, Continue, DeResult, Fixnum, InstanceAccess, IvarAccess, Sym, Symbol,
     Visitor, VisitorInstance, VisitorOption,
 };
@@ -110,9 +110,9 @@ where
 
     fn visit_hash<A>(self, current: Continue<A, ()>) -> DeResult<Self::Value>
     where
-        A: HashKeyAccess<'de, Finished = ()>,
+        A: crate::HashKeyAccess<'de, Finished = ()>,
     {
-        let wrapped = WrappedHashAccess::<_, No>::next_access(self.trace, current);
+        let wrapped = HashKeyAccess::<_, No>::next_access(self.trace, current);
         let len = wrapped.len();
         add_context!(
             self.inner.visit_hash(wrapped),
@@ -122,10 +122,10 @@ where
 
     fn visit_hash_default<A>(self, current: Continue<A, A::Finished>) -> DeResult<Self::Value>
     where
-        A: HashKeyAccess<'de>,
-        A::Finished: HashDefaultAccess<'de>,
+        A: crate::HashKeyAccess<'de>,
+        A::Finished: crate::HashDefaultAccess<'de>,
     {
-        let wrapped = WrappedHashAccess::<_, Yes>::next_access(self.trace, current);
+        let wrapped = HashKeyAccess::<_, Yes>::next_access(self.trace, current);
         let len = wrapped.len();
         add_context!(
             self.inner.visit_hash_default(wrapped),
@@ -399,7 +399,7 @@ where
 
 trait HasDefault<'de, X>
 where
-    X: HashKeyAccess<'de>,
+    X: crate::HashKeyAccess<'de>,
 {
     type Finished<'a>;
 
@@ -410,13 +410,13 @@ struct Yes;
 
 impl<'de, X> HasDefault<'de, X> for Yes
 where
-    X: HashKeyAccess<'de>,
-    X::Finished: HashDefaultAccess<'de>,
+    X: crate::HashKeyAccess<'de>,
+    X::Finished: crate::HashDefaultAccess<'de>,
 {
-    type Finished<'a> = WrappedHashDefault<'a, X::Finished>;
+    type Finished<'a> = HashDefaultAccess<'a, X::Finished>;
 
     fn map_finished(trace: &mut Trace, finished: X::Finished) -> Self::Finished<'_> {
-        WrappedHashDefault {
+        HashDefaultAccess {
             trace,
             inner: finished,
         }
@@ -427,7 +427,7 @@ struct No;
 
 impl<'de, X> HasDefault<'de, X> for No
 where
-    X: HashKeyAccess<'de, Finished = ()>,
+    X: crate::HashKeyAccess<'de, Finished = ()>,
 {
     type Finished<'a> = ();
 
@@ -438,15 +438,15 @@ where
 }
 
 #[derive(Debug)]
-struct WrappedHashAccess<'trace, X, T> {
+struct HashKeyAccess<'trace, X, T> {
     inner: X,
     trace: &'trace mut Trace,
     marker: std::marker::PhantomData<T>,
 }
 
-impl<'de, 'trace, X, T> WrappedHashAccess<'trace, X, T>
+impl<'de, 'trace, X, T> HashKeyAccess<'trace, X, T>
 where
-    X: HashKeyAccess<'de>,
+    X: crate::HashKeyAccess<'de>,
     T: HasDefault<'de, X>,
 {
     fn new(trace: &'trace mut Trace, access: X) -> Self {
@@ -468,15 +468,15 @@ where
     }
 }
 
-struct WrappedHashValueAccess<'trace, X, T> {
+struct HashValueAccess<'trace, X, T> {
     inner: X,
     trace: &'trace mut Trace,
     marker: std::marker::PhantomData<T>,
 }
 
-impl<'de, 'trace, X, T> WrappedHashValueAccess<'trace, X, T>
+impl<'de, 'trace, X, T> HashValueAccess<'trace, X, T>
 where
-    X: HashValueAccess<'de>,
+    X: crate::HashValueAccess<'de>,
     T: HasDefault<'de, X::KeyAccess>,
 {
     fn new(trace: &'trace mut Trace, access: X) -> Self {
@@ -488,12 +488,12 @@ where
     }
 }
 
-impl<'a, 'de, X, T> HashKeyAccess<'de> for WrappedHashAccess<'a, X, T>
+impl<'a, 'de, X, T> crate::HashKeyAccess<'de> for HashKeyAccess<'a, X, T>
 where
-    X: HashKeyAccess<'de>,
+    X: crate::HashKeyAccess<'de>,
     T: HasDefault<'de, X>,
 {
-    type ValueAccess = WrappedHashValueAccess<'a, X::ValueAccess, T>;
+    type ValueAccess = HashValueAccess<'a, X::ValueAccess, T>;
     type Finished = T::Finished<'a>;
 
     fn next_key_seed<K>(self, seed: K) -> DeResult<(K::Value, Self::ValueAccess)>
@@ -505,7 +505,7 @@ where
         self.inner
             .next_key_seed(Wrapped { inner: seed, trace })
             .inspect_err(|_| trace.push(Context::HashKey(index)))
-            .map(|(k, access)| (k, WrappedHashValueAccess::new(trace, access)))
+            .map(|(k, access)| (k, HashValueAccess::new(trace, access)))
     }
 
     fn len(&self) -> usize {
@@ -517,12 +517,12 @@ where
     }
 }
 
-impl<'a, 'de, X, T> HashValueAccess<'de> for WrappedHashValueAccess<'a, X, T>
+impl<'a, 'de, X, T> crate::HashValueAccess<'de> for HashValueAccess<'a, X, T>
 where
-    X: HashValueAccess<'de>,
+    X: crate::HashValueAccess<'de>,
     T: HasDefault<'de, X::KeyAccess>,
 {
-    type KeyAccess = WrappedHashAccess<'a, X::KeyAccess, T>;
+    type KeyAccess = HashKeyAccess<'a, X::KeyAccess, T>;
     type Finished = T::Finished<'a>;
 
     fn next_value_seed<V>(
@@ -537,7 +537,7 @@ where
         self.inner
             .next_value_seed(Wrapped { inner: seed, trace })
             .inspect_err(|_| trace.push(Context::HashValue(index)))
-            .map(|(k, a)| (k, WrappedHashAccess::next_access(trace, a)))
+            .map(|(k, a)| (k, HashKeyAccess::next_access(trace, a)))
     }
 
     fn len(&self) -> usize {
@@ -550,14 +550,14 @@ where
 }
 
 #[derive(Debug)]
-struct WrappedHashDefault<'trace, X> {
+struct HashDefaultAccess<'trace, X> {
     inner: X,
     trace: &'trace mut Trace,
 }
 
-impl<'de, X> HashDefaultAccess<'de> for WrappedHashDefault<'_, X>
+impl<'de, X> crate::HashDefaultAccess<'de> for HashDefaultAccess<'_, X>
 where
-    X: HashDefaultAccess<'de>,
+    X: crate::HashDefaultAccess<'de>,
 {
     fn deserialize_default_seed<V>(self, seed: V) -> DeResult<V::Value>
     where

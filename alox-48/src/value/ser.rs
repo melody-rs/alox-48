@@ -6,8 +6,7 @@
 use super::{Object, RbFields, RbHash, RbString, Symbol, Userdata, Value};
 use crate::{
     ser::{Error, HashDefaultContinue, Kind, Result, Serialize},
-    BignumRef, Continue, Fixnum, Instance, RbArray, RbStruct, SerializeHashDefault,
-    SerializeHashKey, SerializeHashValue, SerializerTrait, Sym,
+    BignumRef, Continue, Fixnum, Instance, RbArray, RbStruct, SerializerTrait, Sym,
 };
 
 impl Serialize for Value {
@@ -71,8 +70,8 @@ impl SerializerTrait for Serializer {
     type Ok = Value;
 
     type SerializeIvars = SerializeIvars;
-    type SerializeHash = SerializeHashKeyImpl<No>;
-    type SerializeHashDefault = SerializeHashKeyImpl<Yes>;
+    type SerializeHash = SerializeHashKey<No>;
+    type SerializeHashDefault = SerializeHashKey<Yes>;
     type SerializeArray = SerializeArray;
 
     fn serialize_nil(self) -> Result<Self::Ok> {
@@ -96,11 +95,13 @@ impl SerializerTrait for Serializer {
     }
 
     fn serialize_hash(self, len: usize) -> Result<Continue<Self::SerializeHash, Self::Ok>> {
-        todo!()
+        let hash = RbHash::with_capacity(len);
+        Ok(SerializeHashKey::next_serialize(hash, len))
     }
 
     fn serialize_hash_default(self, len: usize) -> Result<HashDefaultContinue<Self>> {
-        todo!()
+        let hash = RbHash::with_capacity(len);
+        Ok(SerializeHashKey::next_serialize(hash, len))
     }
 
     fn serialize_array(self, len: usize) -> Result<Self::SerializeArray> {
@@ -263,16 +264,18 @@ pub trait HasDefault {
     fn map_finished(hash: RbHash) -> Self::Finished;
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct Yes;
 
 impl HasDefault for Yes {
-    type Finished = SerializeHashDefaultImpl;
+    type Finished = SerializeHashDefault;
 
     fn map_finished(hash: RbHash) -> Self::Finished {
-        SerializeHashDefaultImpl(hash)
+        SerializeHashDefault(hash)
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct No;
 
 impl HasDefault for No {
@@ -283,13 +286,14 @@ impl HasDefault for No {
     }
 }
 
-pub struct SerializeHashKeyImpl<T> {
+#[derive(Debug)]
+pub struct SerializeHashKey<T> {
     hash: RbHash,
     total_len: usize,
     phantom: std::marker::PhantomData<T>,
 }
 
-impl<T> SerializeHashKeyImpl<T>
+impl<T> SerializeHashKey<T>
 where
     T: HasDefault,
 {
@@ -305,8 +309,8 @@ where
         }
     }
 
-    fn into_serialize_value(self, next_key: Value) -> SerializeHashValueImpl<T> {
-        SerializeHashValueImpl {
+    fn into_serialize_value(self, next_key: Value) -> SerializeHashValue<T> {
+        SerializeHashValue {
             hash: self.hash,
             next_key,
             total_len: self.total_len,
@@ -315,11 +319,11 @@ where
     }
 }
 
-impl<T> SerializeHashKey for SerializeHashKeyImpl<T>
+impl<T> crate::SerializeHashKey for SerializeHashKey<T>
 where
     T: HasDefault,
 {
-    type SerializeValue = SerializeHashValueImpl<T>;
+    type SerializeValue = SerializeHashValue<T>;
     type Finished = T::Finished;
 
     fn serialize_key<K>(self, k: &K) -> Result<Self::SerializeValue>
@@ -339,31 +343,32 @@ where
     }
 }
 
-pub struct SerializeHashValueImpl<T> {
+#[derive(Debug)]
+pub struct SerializeHashValue<T> {
     hash: RbHash,
     next_key: Value,
     total_len: usize,
     marker: std::marker::PhantomData<T>,
 }
 
-impl<T> SerializeHashValueImpl<T>
+impl<T> SerializeHashValue<T>
 where
     T: HasDefault,
 {
     fn into_next_serialize(
         mut self,
         next_value: Value,
-    ) -> Continue<SerializeHashKeyImpl<T>, T::Finished> {
+    ) -> Continue<SerializeHashKey<T>, T::Finished> {
         self.hash.insert(self.next_key, next_value);
-        SerializeHashKeyImpl::next_serialize(self.hash, self.total_len)
+        SerializeHashKey::next_serialize(self.hash, self.total_len)
     }
 }
 
-impl<T> SerializeHashValue for SerializeHashValueImpl<T>
+impl<T> crate::SerializeHashValue for SerializeHashValue<T>
 where
     T: HasDefault,
 {
-    type SerializeKey = SerializeHashKeyImpl<T>;
+    type SerializeKey = SerializeHashKey<T>;
     type Finished = T::Finished;
 
     fn serialize_value<V>(self, v: &V) -> Result<Continue<Self::SerializeKey, Self::Finished>>
@@ -384,9 +389,9 @@ where
 }
 
 #[derive(Debug)]
-pub struct SerializeHashDefaultImpl(RbHash);
+pub struct SerializeHashDefault(RbHash);
 
-impl SerializeHashDefault for SerializeHashDefaultImpl {
+impl crate::SerializeHashDefault for SerializeHashDefault {
     type Ok = Value;
 
     fn serialize_default<V>(self, v: &V) -> Result<Self::Ok>

@@ -8,10 +8,7 @@
 use indexmap::IndexSet;
 
 use super::{traits::HashDefaultContinue, Error, Kind, Result};
-use crate::{
-    tag::Tag, BignumRef, Continue, Fixnum, FromPrimitive, Serialize, SerializeHashDefault,
-    SerializeHashKey, SerializeHashValue, Sym, Symbol,
-};
+use crate::{tag::Tag, BignumRef, Continue, Fixnum, FromPrimitive, Serialize, Sym, Symbol};
 
 /// The `alox_48` serializer.
 #[derive(Debug, Clone)]
@@ -428,8 +425,10 @@ pub struct SerializeHashImpl<'a, T> {
     marker: std::marker::PhantomData<T>,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct Yes;
 
+#[derive(Debug, Clone, Copy)]
 pub struct No;
 
 impl HasDefault for Yes {
@@ -478,7 +477,7 @@ where
     }
 }
 
-impl<'a, T> SerializeHashKey for SerializeHashImpl<'a, T>
+impl<'a, T> crate::SerializeHashKey for SerializeHashImpl<'a, T>
 where
     T: HasDefault,
 {
@@ -503,7 +502,7 @@ where
     }
 }
 
-impl<'a, T> SerializeHashValue for SerializeHashImpl<'a, T>
+impl<'a, T> crate::SerializeHashValue for SerializeHashImpl<'a, T>
 where
     T: HasDefault,
 {
@@ -527,7 +526,7 @@ where
     }
 }
 
-impl<T> SerializeHashDefault for SerializeHashImpl<'_, T>
+impl<T> crate::SerializeHashDefault for SerializeHashImpl<'_, T>
 where
     T: HasDefault,
 {

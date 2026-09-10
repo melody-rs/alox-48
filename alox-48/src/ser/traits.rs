@@ -16,6 +16,7 @@ pub trait Serialize {
         S: Serializer;
 }
 
+#[allow(type_alias_bounds)] // is needed
 pub type HashDefaultContinue<S: Serializer> =
     Continue<S::SerializeHashDefault, <S::SerializeHashDefault as SerializeHashKey>::Finished>;
 
@@ -201,6 +202,9 @@ pub trait SerializeIvars {
     fn end(self) -> Result<Self::Ok>;
 }
 
+// it can't be empty because in order to obtain this
+// there must be at least one more key
+#[allow(clippy::len_without_is_empty)]
 pub trait SerializeHashKey: Sized {
     type SerializeValue: SerializeHashValue<SerializeKey = Self, Finished = Self::Finished>;
     type Finished;
@@ -223,6 +227,8 @@ pub trait SerializeHashKey: Sized {
     fn index(&self) -> usize;
 }
 
+// ditto
+#[allow(clippy::len_without_is_empty)]
 pub trait SerializeHashValue {
     type SerializeKey: SerializeHashKey<SerializeValue = Self, Finished = Self::Finished>;
     type Finished;
